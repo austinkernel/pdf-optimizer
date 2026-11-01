@@ -1,0 +1,245 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { EngineClient, EngineFailure } from "./engine/client";
+import { optionsFor } from "./engine/profiles";
+import type { AnalysisReport, OptimizeResult, ProfileId, ProgressEvent } from "./engine/types";
+import { AnalysisView } from "./components/AnalysisView";
+import { ProfilePicker } from "./components/ProfilePicker";
+import { ProcessingView } from "./components/ProcessingView";
+import { ResultsView } from "./components/ResultsView";
+import { formatBytes } from "./format";
+import { pageRequestCount } from "./netMonitor";
+import { applyUpdate, subscribePwa, type OfflineStatus } from "./pwa";
+
+type Stage =
+  | { kind: "home" }
+  | { kind: "analyzing"; file: File; progress: ProgressEvent | null; startedAt: number }
+  | { kind: "ready"; file: File; report: AnalysisReport }
+  | { kind: "processing"; file: File; report: AnalysisReport; progress: ProgressEvent | null; startedAt: number }
+  | { kind: "done"; file: File; report: AnalysisReport; result: OptimizeResult; blob: Blob; pageRequests: number }
+  | { kind: "error"; message: string; file?: File; report?: AnalysisReport };
+
+const VERSION = "0.2.0";
+const SOURCE_URL = "https://github.com/austinkernel/pdf-optimizer";
+const PROFILE_KEY = "pdfopt.profile";
+
+function loadProfile(): ProfileId {
+  try {
+    const v = localStorage.getItem(PROFILE_KEY);
+    if (v === "lossless" || v === "high" || v === "balanced" || v === "compact") return v;
+  } catch {
+    /* storage unavailable */
+  }
+  return "balanced";
+}
+
+function friendlyError(e: unknown): string {
+  if (e instanceof EngineFailure) {
+    switch (e.code) {
+      case "password":
+        return "This PDF is protected with an open password. Password support isn't available yet.";
+      case "not-pdf":
+        return "This file couldn't be read as a PDF. It may be damaged or a different file type.";
+      case "memory":
+        return "This document needs more memory than iOS allows a web app. Try a smaller file, or the Lossless profile.";
+      case "crashed":
+        return e.message;
+      default:
+        return `Something went wrong while processing: ${e.message}`;
+    }
+  }
+  return `Unexpected error: ${(e as Error)?.message ?? String(e)}`;
+}
+
+/** Keeps the screen on during processing where supported, because iOS suspends backgrounded web apps. */
+async function holdWakeLock(): Promise<() => void> {
+  try {
+    const nav = navigator as Navigator & { wakeLock?: { request(t: "screen"): Promise<{ release(): Promise<void> }> } };
+    const lock = await nav.wakeLock?.request("screen");
+    return () => void lock?.release().catch(() => {});
+  } catch {
+    return () => {};
+  }
+}
+
+export default function App() {
+  const engine = useRef<EngineClient | null>(null);
+  if (!engine.current) engine.current = new EngineClient();
+  const [stage, setStage] = useState<Stage>({ kind: "home" });
+  const [profile, setProfile] = useState<ProfileId>(loadProfile);
+  const [pwa, setPwa] = useState<{ offline: OfflineStatus; updateReady: boolean }>({ offline: { supported: false, ready: false }, updateReady: false });
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => subscribePwa(setPwa), []);
+  useEffect(() => {
+    // Load the engine in the background so the first analysis starts immediately.
+    engine.current!.warmUp().catch(() => {});
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(PROFILE_KEY, profile);
+    } catch {
+      /* ignore */
+    }
+  }, [profile]);
+
+  const pickFile = () => fileInput.current?.click();
+
+  const onFile = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+      setStage({ kind: "error", message: `"${file.name}" is not a PDF.` });
+      return;
+    }
+    setStage({ kind: "analyzing", file, progress: null, startedAt: Date.now() });
+    try {
+      const report = await engine.current!.analyze(file, (progress) =>
+        setStage((s) => (s.kind === "analyzing" ? { ...s, progress } : s)),
+      );
+      setStage({ kind: "ready", file, report });
+    } catch (e) {
+      if (e instanceof EngineFailure && e.code === "cancelled") return setStage({ kind: "home" });
+      setStage({ kind: "error", message: friendlyError(e), file });
+    }
+  }, []);
+
+  const compress = async (file: File, report: AnalysisReport) => {
+    if (engine.current!.busy) return; // duplicate-tap guard
+    setStage({ kind: "processing", file, report, progress: null, startedAt: Date.now() });
+    const release = await holdWakeLock();
+    const req0 = pageRequestCount();
+    try {
+      const result = await engine.current!.optimize(file, optionsFor(profile), (progress) =>
+        setStage((s) => (s.kind === "processing" ? { ...s, progress } : s)),
+      );
+      const blob = new Blob([result.bytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
+      result.bytes = new Uint8Array(0); // drop the second copy; the Blob holds the output now
+      setStage({ kind: "done", file, report, result, blob, pageRequests: pageRequestCount() - req0 });
+    } catch (e) {
+      if (e instanceof EngineFailure && e.code === "cancelled") return setStage({ kind: "ready", file, report });
+      setStage({ kind: "error", message: friendlyError(e), file, report });
+    } finally {
+      release();
+    }
+  };
+
+  const cancel = () => engine.current!.cancel();
+
+  return (
+    <div className="app">
+      {pwa.updateReady && (
+        <div className="update-bar">
+          <span>An update is ready.</span>
+          <button type="button" className="btn-link" onClick={applyUpdate} disabled={stage.kind === "processing"}>
+            Reload
+          </button>
+        </div>
+      )}
+      <header className="header">
+        <h1>PDF Optimizer</h1>
+        {stage.kind !== "home" && stage.kind !== "processing" && stage.kind !== "analyzing" && (
+          <button type="button" className="btn-link" onClick={() => setStage({ kind: "home" })}>
+            Done
+          </button>
+        )}
+      </header>
+
+      <input
+        ref={fileInput}
+        type="file"
+        accept="application/pdf,.pdf"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = ""; // allow re-selecting the same file
+          void onFile(f);
+        }}
+      />
+
+      <main className="content">
+        {stage.kind === "home" && (
+          <div className="home">
+            <div className="home-icon" aria-hidden="true">
+              <img src="./icon-192.png" alt="" width={96} height={96} />
+            </div>
+            <p className="home-lead">Shrink scanned PDFs without losing quality, searchable text or bookmarks.</p>
+            <button type="button" className="btn btn-primary btn-large" onClick={pickFile}>
+              Choose PDF
+            </button>
+            <p className="footnote center">Processed entirely on this iPhone. Nothing is uploaded.</p>
+          </div>
+        )}
+
+        {stage.kind === "analyzing" && (
+          <ProcessingView title={stage.file.name} progress={stage.progress} mode="analyze" startedAt={stage.startedAt} onCancel={cancel} />
+        )}
+
+        {stage.kind === "ready" && (
+          <>
+            <AnalysisView report={stage.report} fileName={stage.file.name} />
+            <ProfilePicker value={profile} onChange={setProfile} />
+            <div className="actions sticky-actions">
+              <button type="button" className="btn btn-primary btn-large" onClick={() => compress(stage.file, stage.report)}>
+                Compress
+              </button>
+            </div>
+          </>
+        )}
+
+        {stage.kind === "processing" && (
+          <ProcessingView title={`Compressing ${stage.file.name}`} progress={stage.progress} mode="optimize" startedAt={stage.startedAt} onCancel={cancel} />
+        )}
+
+        {stage.kind === "done" && (
+          <ResultsView
+            result={stage.result}
+            blob={stage.blob}
+            originalName={stage.file.name}
+            pageRequests={stage.pageRequests}
+            onAnotherProfile={() => setStage({ kind: "ready", file: stage.file, report: stage.report })}
+            onNewFile={pickFile}
+          />
+        )}
+
+        {stage.kind === "error" && (
+          <div className="home">
+            <div className="notice notice-error" role="alert">{stage.message}</div>
+            {stage.file && stage.report && (
+              <button type="button" className="btn btn-secondary" onClick={() => setStage({ kind: "ready", file: stage.file!, report: stage.report! })}>
+                Back to settings
+              </button>
+            )}
+            <button type="button" className="btn btn-primary" onClick={pickFile}>
+              Choose another PDF
+            </button>
+          </div>
+        )}
+
+        {(stage.kind === "home" || stage.kind === "ready" || stage.kind === "done") && (
+          <details className="privacy">
+            <summary>Privacy &amp; app info</summary>
+            <div className="group">
+              <div className="row"><span className="row-label">Processing</span><span className="row-value">On this device only</span></div>
+              <div className="row"><span className="row-label">Uploads, analytics, tracking</span><span className="row-value">None</span></div>
+              <div className="row">
+                <span className="row-label">Offline</span>
+                <span className="row-value">
+                  {!pwa.offline.supported ? "Not supported" : pwa.offline.ready ? "Ready" : pwa.offline.total ? `Caching ${pwa.offline.cached}/${pwa.offline.total}` : "Not installed yet"}
+                </span>
+              </div>
+              <div className="row"><span className="row-label">Page requests since launch</span><span className="row-value">{pageRequestCount()}</span></div>
+              <div className="row"><span className="row-label">Version</span><span className="row-value">{VERSION}{pwa.offline.version ? ` (${pwa.offline.version})` : ""}</span></div>
+              <div className="row"><span className="row-label">Engine</span><span className="row-value">MuPDF 1.28 (WebAssembly)</span></div>
+            </div>
+            <p className="footnote">
+              The page's security policy blocks connections to any other server. Your PDF is read into memory, processed
+              in a background worker, and released when you leave the result. Nothing is stored. The original file is
+              never modified. "Page requests" counts loads of the app's own files and should not grow while processing.
+              Licensed AGPL-3.0. <a href={SOURCE_URL} target="_blank" rel="noreferrer">Source code</a>.
+            </p>
+            {stage.kind === "ready" && <p className="footnote">Selected file: {formatBytes(stage.file.size)}</p>}
+          </details>
+        )}
+      </main>
+    </div>
+  );
+}
