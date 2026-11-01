@@ -1,0 +1,130 @@
+// End-to-end test of the built PWA in headless Chromium with an iPhone-sized viewport.
+// Usage: npm run build && node --experimental-strip-types scripts/e2e.mjs [screenshotDir]
+// (Chromium, not WebKit: iOS-specific behaviour still needs an on-device check.)
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { preview } from "vite";
+import { createRequire } from "node:module";
+// Playwright is provided by the environment (globally installed), not a project dependency.
+const { chromium, devices } = createRequire(import.meta.url)("playwright");
+import { makeScanPdf } from "../test/fixtures.ts";
+
+const shots = process.argv[2] ?? null;
+if (shots) mkdirSync(shots, { recursive: true });
+const work = join(tmpdir(), `pdfopt-e2e-${process.pid}`);
+mkdirSync(work, { recursive: true });
+const small = join(work, "scan-color.pdf");
+const big = join(work, "scan-big.pdf");
+writeFileSync(small, makeScanPdf({ mode: "color", encoding: "flate", links: true, outline: true, pages: 2 }));
+writeFileSync(big, makeScanPdf({ mode: "color", encoding: "flate", pages: 6 }));
+
+const server = await preview({ preview: { port: 4317, strictPort: true }, logLevel: "warn" });
+const url = "http://localhost:4317/";
+const browser = await chromium.launch();
+const iphone = devices["iPhone 15"] ?? devices["iPhone 13"];
+const ctx = await browser.newContext({ ...iphone, colorScheme: "light" });
+const page = await ctx.newPage();
+const errors = [];
+page.on("pageerror", (e) => errors.push(String(e)));
+// (MuPDF logs parser diagnostics via console.error for damaged input; those are expected, so only uncaught errors count.)
+let recording = false;
+const requestsDuringJob = [];
+ctx.on("request", (r) => recording && requestsDuringJob.push(r.url()));
+
+const results = [];
+const check = (name, ok, detail = "") => {
+  results.push({ name, ok, detail });
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
+};
+
+async function compressFile(file, { shotPrefix } = {}) {
+  await page.locator('input[type="file"]').setInputFiles(file);
+  await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
+  if (shots && shotPrefix) await page.screenshot({ path: join(shots, `${shotPrefix}-analysis.png`), fullPage: true });
+  await page.getByRole("radio", { name: /Balanced/ }).click();
+  recording = true;
+  await page.getByRole("button", { name: "Compress" }).click();
+  await page.locator(".hero-number").waitFor({ timeout: 120_000 });
+  recording = false;
+  if (shots && shotPrefix) await page.screenshot({ path: join(shots, `${shotPrefix}-results.png`), fullPage: true });
+}
+
+try {
+  await page.goto(url);
+  if (shots) await page.screenshot({ path: join(shots, "1-home.png") });
+  check("home screen shows primary action", await page.getByRole("button", { name: "Choose PDF" }).isVisible());
+
+  // Wait for the service worker to install and precache everything.
+  await page.evaluate(async () => {
+    const reg = await navigator.serviceWorker.ready;
+    return reg.active?.state;
+  });
+  await page.reload(); // page is now controlled by the SW
+  const swControlled = await page.evaluate(() => !!navigator.serviceWorker.controller);
+  check("service worker controls the page", swControlled);
+
+  await compressFile(small, { shotPrefix: "2" });
+  const hero = await page.locator(".hero-number").innerText();
+  const statuses = await page.locator(".check-row .status").allInnerTexts();
+  check("compression reports a real reduction", /^−\d/.test(hero), hero);
+  check("all verification checks pass in the browser", statuses.length > 5 && statuses.every((s) => s === "✓"), `${statuses.length} checks`);
+  check("no network requests during processing", requestsDuringJob.length === 0, requestsDuringJob.join(", "));
+  const foot = await page.locator("p.footnote", { hasText: "Network requests during processing" }).innerText();
+  check("in-app network counters read 0/0", /0 from the app page,\s*0 from the engine/.test(foot), foot.replace(/\s+/g, " "));
+
+  // Download produces a valid PDF of the reported size.
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download" }).click()]);
+  const out = join(work, "downloaded.pdf");
+  await dl.saveAs(out);
+  const { readFileSync, statSync } = await import("node:fs");
+  const head = readFileSync(out).subarray(0, 5).toString();
+  check("downloaded file is a PDF", head === "%PDF-", `${statSync(out).size} bytes, name "${dl.suggestedFilename()}"`);
+
+  // Offline: reload with the network cut off. App + 10 MB wasm must come from the cache.
+  await ctx.setOffline(true);
+  await page.reload();
+  await page.getByRole("button", { name: "Choose PDF" }).waitFor({ timeout: 15_000 });
+  await compressFile(small);
+  check("works fully offline after first load", /^−\d/.test(await page.locator(".hero-number").innerText()));
+  await ctx.setOffline(false);
+
+  // Cancellation mid-job returns to settings and the engine recovers.
+  await page.locator('input[type="file"]').setInputFiles(big);
+  await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Compress" }).click();
+  await page.locator(".processing").waitFor();
+  await page.waitForTimeout(400);
+  if (shots) await page.screenshot({ path: join(shots, "4-processing.png") });
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 10_000 });
+  check("cancel returns to settings", true);
+  await page.getByRole("button", { name: "Compress" }).click();
+  await page.locator(".hero-number").waitFor({ timeout: 120_000 });
+  check("engine works again after cancel", true);
+
+  // Non-PDF input gives a clear error.
+  const bogus = join(work, "notes.pdf");
+  writeFileSync(bogus, "this is not a pdf");
+  await page.getByRole("button", { name: "Done" }).click();
+  await page.locator('input[type="file"]').setInputFiles(bogus);
+  await page.locator(".notice-error").waitFor({ timeout: 30_000 });
+  check("damaged/non-PDF file shows an error", /couldn't be read as a PDF/.test(await page.locator(".notice-error").innerText()));
+
+  // Dark mode rendering for a visual check.
+  if (shots) {
+    await page.emulateMedia({ colorScheme: "dark" });
+    await compressFile(small);
+    await page.screenshot({ path: join(shots, "5-results-dark.png"), fullPage: true });
+  }
+  check("no uncaught page errors", errors.length === 0, errors.join(" | "));
+} catch (e) {
+  check("e2e run completed", false, String(e));
+  if (shots) await page.screenshot({ path: join(shots, "error.png"), fullPage: true }).catch(() => {});
+} finally {
+  await browser.close();
+  await new Promise((r) => server.httpServer.close(r));
+}
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} passed`);
+process.exit(failed.length ? 1 : 0);

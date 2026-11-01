@@ -349,3 +349,13 @@ account and linking come at Milestone 6.
 - tesseract.js v5 (iOS 17 compatibility, offline hosting): https://github.com/naptha/tesseract.js/releases/tag/v5.0.0
 - iOS Safari memory reports: https://lapcatsoftware.com/articles/2026/1/7.html · https://bugs.webkit.org/show_bug.cgi?id=221530 · https://github.com/microsoft/onnxruntime/issues/26827
 - Web Share Target not supported in WebKit: https://bugs.webkit.org/show_bug.cgi?id=194593 · https://firt.dev/notes/pwa-ios/
+
+## 12. Decision update (after this report)
+
+- Owner chose a **public repository** (`austinkernel/pdf-optimizer`). That
+  simplifies §4 and §8:
+  - **AGPL compliance** is automatic, because the source is public and the
+    app links to it. The project is licensed AGPL-3.0-or-later.
+  - **Hosting:** GitHub Pages is free for public repositories, so it
+    replaces Cloudflare Pages as the default. No access gate is needed,
+    since anyone can see the app but no documents ever reach the server.
