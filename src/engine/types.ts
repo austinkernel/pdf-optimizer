@@ -10,6 +10,8 @@ export interface OptimizeOptions {
   profile: ProfileId;
   /** IJG libjpeg quality (1–100) for continuous-tone images. null = never re-encode images. */
   jpegQuality: number | null;
+  /** Store colour at half resolution (4:2:0), the norm for scans and photos. Sources that are already 4:2:0 always stay 4:2:0. */
+  chromaSubsampling: boolean;
   /** Downsample images whose effective resolution exceeds this many DPI. null = never downsample. */
   downsampleAboveDpi: number | null;
   /** Target resolution when downsampling. */
@@ -47,8 +49,15 @@ export interface ImageInfo {
   /** Lowest effective DPI over all placements (null if never drawn on a page). Estimated from the drawing matrix. */
   minDpi: number | null;
   maxDpi: number | null;
+  /** DPI used for downsampling decisions: same as minDpi/maxDpi, except on oversized pages, where it is measured as if printed at Letter size. */
+  minEffectiveDpi: number | null;
+  maxEffectiveDpi: number | null;
+  /** Drawn on a page larger than any paper size (photo-to-PDF style). */
+  onOversizedPage: boolean;
   /** Estimated IJG quality for JPEG streams (null if not JPEG or not estimable). */
   jpegQualityEstimate: number | null;
+  /** Chroma layout of JPEG streams: "420" (any subsampling), "444", "gray"; null if not JPEG. */
+  jpegChroma: "420" | "444" | "gray" | null;
   hasSoftMask: boolean;
   isMask: boolean;
 }

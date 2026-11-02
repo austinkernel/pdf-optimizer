@@ -6,6 +6,7 @@
  * from the offline cache.
  */
 import { analyze, optimize, EngineError } from "./mupdfEngine";
+import { configureJpegEncoder } from "./jpegEncoder";
 import type { WorkerRequest, WorkerResponse } from "./protocol";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -14,7 +15,7 @@ function post(msg: WorkerResponse, transfer: Transferable[] = []) {
   self.postMessage(msg, transfer);
 }
 
-self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
+self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
   const req = ev.data;
   const progress = (p: Parameters<NonNullable<Parameters<typeof analyze>[1]>>[0]) => post({ id: req.id, type: "progress", progress: p });
   try {
@@ -23,7 +24,7 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
       post({ id: req.id, type: "analysis", report });
     } else if (req.type === "optimize") {
       const before = performance.getEntriesByType("resource").length;
-      const result = optimize(new Uint8Array(req.buffer), req.options, progress);
+      const result = await optimize(new Uint8Array(req.buffer), req.options, progress);
       result.workerNetworkRequests = performance.getEntriesByType("resource").length - before;
       const buf = result.bytes.buffer as ArrayBuffer;
       post({ id: req.id, type: "optimized", result }, [buf]);
@@ -35,4 +36,9 @@ self.onmessage = (ev: MessageEvent<WorkerRequest>) => {
   }
 };
 
-post({ id: 0, type: "ready" });
+// Load the JPEG codec's .wasm now, at startup, so no fetch of any kind happens
+// while a document is being processed. Failure is tolerated: encodeJpeg falls
+// back to MuPDF's encoder.
+configureJpegEncoder()
+  .catch(() => {})
+  .finally(() => post({ id: 0, type: "ready" }));

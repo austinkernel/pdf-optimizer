@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.2.1: fixes from first on-device test
+### Fixed
+- **Save to Files saved a text file** containing the PDF's name. The share
+  sheet was given a `title` along with the file, and iOS shared it as a
+  separate text item. The app now shares the file only.
+- **Balanced gave 0% on a real 103 MB phone-style scan.** MuPDF's JPEG
+  encoder always writes 4:4:4 (full-resolution colour), so re-encoding 4:2:0
+  phone/scanner JPEGs could not beat the originals.
+### Changed
+- JPEG encoding now uses **mozjpeg** (WASM, Apache-2.0): 4:2:0 colour,
+  trellis quantisation, optimised Huffman tables, standard quantisation
+  tables (so quality numbers keep their IJG meaning). It falls back to
+  MuPDF's encoder for images over 40 MP or on encoder failure.
+- Sources that are already 4:2:0 stay 4:2:0. Balanced and Compact use
+  4:2:0. High Quality keeps 4:4:4 for full-colour sources.
+- The codec loads at worker startup, so processing still makes zero network
+  requests.
+- The analysis screen shows each image's colour sampling (4:2:0 / 4:4:4).
+- The no-reduction message explains why, and suggests Compact.
+- **Photo-sized pages** (e.g. 59.5 × 79.3 in from iOS photo-to-PDF, where
+  each photo sits at 72 DPI) are now judged at Letter size for downsampling.
+  Before, the real 103 MB file reported 72 DPI and was never downsampled;
+  its 12–48 MP photos are 366–519 DPI at Letter size. Page dimensions are
+  unchanged. The analysis shows both values.
+- **Fresh engine per compression job:** the worker is recycled after each
+  job, because MuPDF's WASM heap never shrinks and fragments (measured: about
+  +35 MB per job with 12 MP photos). Within a job, images are processed
+  largest first.
+- Network counters now measure from the moment the document reaches a ready
+  engine. The e2e test also asserts the whole session makes only same-origin
+  GET requests with no bodies.
+### Measured (synthetic fixtures, same verification as before)
+- Colour lossless scan: Balanced −88% → −92%, Compact −97.1% → −97.9%.
+- q97 JPEG scan: High −12% → −43%, Balanced −68% → −79%,
+  Compact −92% → −94.5%.
+- q75 JPEG scan: Compact −39% → −55%.
+- Phone-style q92 4:2:0 scan: Balanced 0% → −7%, Compact −77%.
+- iPhone photo→PDF, 12 MP q93 on a 72 DPI page: Balanced −17%, Compact −90.5%.
+- iPhone photo→PDF, 24 MP q93: Balanced −85%, Compact −97%.
+
 ## 0.2.0 — Milestone 2 (proof of concept)
 ### Added
 - PWA (React + TypeScript + Vite), installable, works offline via a

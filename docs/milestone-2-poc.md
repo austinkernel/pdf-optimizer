@@ -121,3 +121,56 @@ Two bugs were found and fixed through testing:
 ## Known limitations
 
 See the README "Known limitations" list.
+
+## Addendum (0.2.1): first on-device test and encoder change
+
+Real-world test by the owner on iPhone: a 102.8 MB, 33-page image-only scan.
+- Analysis, compression, verification (all checks green), offline use and
+  memory all worked on the device. Processing took about 1 minute, and the
+  103 MB file stayed within iOS memory limits.
+- **Balanced: 0%.** All 33 images were "kept: would not save ≥5%".
+  **Compact: −18.8%.**
+- **Save to Files produced a .txt** with the file's name.
+
+Root causes and fixes:
+1. `navigator.share({ files, title })`: iOS shares `title` as a separate
+   text item. Now `{ files }` only.
+2. MuPDF's `Pixmap.asJPEG` always writes progressive 4:4:4 (verified from
+   the SOF marker). Phone and scanner JPEGs are 4:2:0. Re-encoding a 4:2:0
+   source as 4:4:4 spends about a third more bytes on chroma the source no
+   longer has.
+
+Encoder comparison on a 300 DPI page saved as q95 4:2:0, re-encoded:
+
+| Encoder | Size | Saved | SSIM @300 DPI | SSIM @150 DPI |
+|---|---|---|---|---|
+| source | 2.455 MB | — | — | — |
+| MuPDF q90 4:4:4 | 1.793 MB | 27.0% | 0.979 | 0.994 |
+| mozjpeg q90 4:2:0 | 1.266 MB | **48.5%** | 0.975 | 0.994 |
+| mozjpeg q85 4:2:0 | 0.898 MB | 63.4% | 0.970 | 0.991 |
+
+For a source that is already q90 4:2:0, re-encoding at q90 saves under 10%
+with any encoder. Further savings need lower quality or lower resolution.
+That is a property of the source, not of the tool. A visual check of 4:2:0
+on red stamp edges and dark text at 1.5× showed no visible difference.
+
+### Second finding: photo-sized pages
+
+The owner's analysis screen showed 33 DCT colour images, 3024–5712 ×
+4032–5712 px, JPEG quality ≈93, on pages of 59.5 × 79.3 in (and 42 × 56 in).
+These are iPhone camera photos converted to PDF with the page sized at 72 DPI.
+DPI-based downsampling therefore saw 72 DPI and never triggered. Pages whose
+long side exceeds 17 in are now evaluated as if printed at Letter size: a 4032
+px long side is 367 DPI, a 5712 px long side is 519 DPI.
+
+| iPhone photo → PDF fixture (q93 4:2:0, 72 DPI page) | Balanced | Compact |
+|---|---|---|
+| 12 MP | −17.3% (q93 → q90, no downsampling) | −90.5% (→ 200 DPI at Letter) |
+| 24 MP | −84.8% (→ 300 DPI at Letter) | −96.7% |
+
+### Third finding: heap fragmentation across jobs
+
+In one WASM instance the MuPDF heap grew 79 → 220 MB over six jobs on 12 MP
+photos, in steps of one decoded image (36.6 MB). WASM memory cannot shrink,
+so the client now recycles the worker after every compression job.
+`test/memprobe.test.ts` reproduces the measurement.

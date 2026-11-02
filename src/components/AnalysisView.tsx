@@ -32,10 +32,15 @@ function range(xs: number[]): string {
 function imageSummary(images: ImageInfo[]) {
   const byClass = { color: 0, gray: 0, bilevel: 0, other: 0 };
   const byFilter = new Map<string, number>();
+  const byChroma = new Map<string, number>();
   for (const i of images) {
     byClass[i.colorClass]++;
     const f = i.filters.length ? i.filters.join("+").replace(/Decode/g, "") : "uncompressed";
     byFilter.set(f, (byFilter.get(f) ?? 0) + 1);
+    if (i.jpegChroma && i.jpegChroma !== "gray") {
+      const c = i.jpegChroma === "420" ? "4:2:0" : "4:4:4";
+      byChroma.set(c, (byChroma.get(c) ?? 0) + 1);
+    }
   }
   const classes = [
     byClass.color && `${byClass.color} color`,
@@ -46,7 +51,10 @@ function imageSummary(images: ImageInfo[]) {
   return {
     classes: classes.join(", "),
     formats: [...byFilter].map(([f, n]) => `${n} ${f}`).join(", "),
+    chroma: [...byChroma].map(([c, n]) => `${n} × ${c}`).join(", "),
     dpi: range(images.map((i) => i.minDpi).filter((d): d is number => d !== null)),
+    effDpi: range(images.map((i) => i.minEffectiveDpi).filter((d): d is number => d !== null)),
+    oversized: images.some((i) => i.onOversizedPage),
     jpegQ: range(images.map((i) => i.jpegQualityEstimate).filter((q): q is number => q !== null)),
     dims: range(images.map((i) => i.width)) + " × " + range(images.map((i) => i.height)),
   };
@@ -80,8 +88,16 @@ export function AnalysisView({ report: r, fileName }: { report: AnalysisReport; 
             <Row label="Type" value={im.classes} />
             <Row label="Encoding" value={im.formats} />
             <Row label="Pixel size" value={im.dims} />
-            <Row label="Resolution" value={`${im.dpi} DPI`} est />
+            {im.oversized ? (
+              <>
+                <Row label="Resolution on page" value={`${im.dpi} DPI`} est />
+                <Row label="At Letter size" value={`${im.effDpi} DPI`} est />
+              </>
+            ) : (
+              <Row label="Resolution" value={`${im.dpi} DPI`} est />
+            )}
             {im.jpegQ !== "n/a" && <Row label="JPEG quality" value={im.jpegQ} est />}
+            {im.chroma && <Row label="Colour sampling" value={im.chroma} />}
           </>
         )}
       </div>

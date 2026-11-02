@@ -11,6 +11,7 @@
  */
 import * as mupdf from "mupdf";
 import { estimateJpegQuality } from "./jpegQuality";
+import { encodeJpeg, jpegChroma, type Chroma } from "./jpegEncoder";
 import { downsampleArea } from "./resample";
 import type {
   AnalysisReport,
@@ -157,7 +158,20 @@ function collectImageRefs(resources: PDFObject, out: Map<number, PDFObject>, see
 interface Placement {
   min: number;
   max: number;
+  /** Effective DPI: as placed on normal pages, or as if printed at Letter size on oversized pages. */
+  effMin: number;
+  effMax: number;
+  oversized: boolean;
 }
+
+/**
+ * Pages larger than any real paper size (e.g. 59.5 × 79.3 in) come from
+ * "photo → PDF" tools that size the page so the photo sits at 72 DPI. Physical
+ * DPI is meaningless there, so resolution is judged as if the page were
+ * printed with its long side at Letter's 11 in.
+ */
+export const OVERSIZED_PAGE_LONG_SIDE_IN = 17; // larger than Tabloid/A3
+const LETTER_LONG_SIDE_IN = 11;
 
 /**
  * Effective DPI of every image placement, keyed by object number. MuPDF's
@@ -182,6 +196,9 @@ function measurePlacements(doc: PDFDocument, pageIndex: number, acc: Map<number,
     }
     const b = page.getBounds();
     const pageArea = Math.max(1, (b[2] - b[0]) * (b[3] - b[1]));
+    const pageLongIn = Math.max(b[2] - b[0], b[3] - b[1]) / 72;
+    const oversized = pageLongIn > OVERSIZED_PAGE_LONG_SIDE_IN;
+    const printScale = oversized ? LETTER_LONG_SIDE_IN / pageLongIn : 1; // printed size / page size
     const record = (img: mupdf.Image, ctm: mupdf.Matrix) => {
       const wPt = Math.hypot(ctm[0], ctm[1]);
       const hPt = Math.hypot(ctm[2], ctm[3]);
@@ -190,11 +207,15 @@ function measurePlacements(doc: PDFDocument, pageIndex: number, acc: Map<number,
       const num = byPtr.get(img.pointer as unknown as number);
       if (num === undefined) return;
       const dpi = Math.min((img.getWidth() * 72) / wPt, (img.getHeight() * 72) / hPt);
+      const eff = dpi / printScale;
       const p = acc.get(num);
       if (p) {
         p.min = Math.min(p.min, dpi);
         p.max = Math.max(p.max, dpi);
-      } else acc.set(num, { min: dpi, max: dpi });
+        p.effMin = Math.min(p.effMin, eff);
+        p.effMax = Math.max(p.effMax, eff);
+        p.oversized ||= oversized;
+      } else acc.set(num, { min: dpi, max: dpi, effMin: eff, effMax: eff, oversized });
     };
     const dev = new mupdf.Device({
       fillImage: (img, ctm) => record(img, ctm),
@@ -308,10 +329,16 @@ function scanImages(doc: PDFDocument, placements: Map<number, Placement>): Image
     const cs = colorSpaceOf(ref);
     let storedBytes = 0;
     let q: number | null = null;
+    let chroma: ImageInfo["jpegChroma"] = null;
     const raw = ref.readRawStream();
     try {
       storedBytes = raw.getLength();
-      if (filters.length === 1 && filters[0] === "DCTDecode") q = estimateJpegQuality(raw.asUint8Array().subarray(0, 4096));
+      if (filters.length === 1 && filters[0] === "DCTDecode") {
+        // Headers (EXIF/ICC APP segments, DQT, SOF) precede the scan data; 128 KB covers them.
+        const head = raw.asUint8Array().subarray(0, 131072);
+        q = estimateJpegQuality(head);
+        chroma = jpegChroma(head);
+      }
     } finally {
       raw.destroy();
     }
@@ -331,7 +358,11 @@ function scanImages(doc: PDFDocument, placements: Map<number, Placement>): Image
         storedBytes,
         minDpi: p ? Math.round(p.min) : null,
         maxDpi: p ? Math.round(p.max) : null,
+        minEffectiveDpi: p ? Math.round(p.effMin) : null,
+        maxEffectiveDpi: p ? Math.round(p.effMax) : null,
+        onOversizedPage: p?.oversized ?? false,
         jpegQualityEstimate: q,
+        jpegChroma: chroma,
         hasSoftMask: !ref.get("SMask").isNull() || !ref.get("Mask").isNull(),
         isMask,
       },
@@ -384,6 +415,11 @@ function analyzeOpen(doc: PDFDocument, fileBytes: number, onProgress?: Progress)
   if (other) warnings.push(`${other} image(s) use CMYK/Indexed/Lab/special colour spaces and will be left unchanged in this version.`);
   const bilevel = scans.filter((s) => s.info.colorClass === "bilevel").length;
   if (bilevel) warnings.push(`${bilevel} black-and-white image(s) will be left unchanged (CCITT G4 recompression comes in a later version).`);
+  const big = scans.filter((s) => s.info.onOversizedPage).length;
+  if (big)
+    warnings.push(
+      `${big} image(s) sit on oversized, photo-sized pages (typical of photos converted to PDF). Resolution is judged as if each page were printed at Letter size; page dimensions are not changed.`,
+    );
   if (scans.length === 0) warnings.push("No embedded images found. Only structural (lossless) savings are possible.");
   return {
     scans,
@@ -576,16 +612,18 @@ function decideSkip(s: ImageScan, o: OptimizeOptions, targetDims: [number, numbe
 }
 
 function targetSize(i: ImageInfo, o: OptimizeOptions): [number, number] | null {
-  if (o.downsampleAboveDpi === null || i.minDpi === null) return null;
-  if (i.minDpi <= o.downsampleAboveDpi) return null;
-  const scale = o.downsampleToDpi / i.minDpi;
+  // Effective DPI: physical for normal pages, Letter-equivalent for oversized photo pages.
+  const dpi = i.minEffectiveDpi;
+  if (o.downsampleAboveDpi === null || dpi === null) return null;
+  if (dpi <= o.downsampleAboveDpi) return null;
+  const scale = o.downsampleToDpi / dpi;
   const w = Math.max(1, Math.round(i.width * scale));
   const h = Math.max(1, Math.round(i.height * scale));
   return w < i.width && h < i.height ? [w, h] : null;
 }
 
 /** Re-encodes one image in place. Returns its outcome. All WASM objects are released before returning. */
-function rewriteImage(doc: PDFDocument, s: ImageScan, o: OptimizeOptions): ImageOutcome {
+async function rewriteImage(doc: PDFDocument, s: ImageScan, o: OptimizeOptions): Promise<ImageOutcome> {
   const i = s.info;
   const base: ImageOutcome = {
     objNum: i.objNum,
@@ -623,23 +661,31 @@ function rewriteImage(doc: PDFDocument, s: ImageScan, o: OptimizeOptions): Image
       pix = null;
       enc = small;
     }
-    const jpg = enc.asJPEG(o.jpegQuality!, false);
+    // Keep 4:2:0 if the source already was 4:2:0: that chroma detail is already gone.
+    // Otherwise the profile decides (High Quality keeps full colour resolution).
+    const chroma: Chroma = i.jpegChroma === "420" || o.chromaSubsampling ? "420" : "444";
+    const w = enc.getWidth();
+    const h = enc.getHeight();
+    const encoded = await encodeJpeg(enc, o.jpegQuality!, chroma);
+    const jpg = encoded.bytes;
     const newLen = jpg.byteLength;
-    if (newLen > i.storedBytes * (1 - o.minGain)) return { ...base, decision: "kept-no-gain", detail: `would be ${newLen} bytes` };
+    const detail = `${encoded.encoder} ${encoded.chroma === "gray" ? "gray" : encoded.chroma === "420" ? "4:2:0" : "4:4:4"} q${o.jpegQuality}`;
+    if (newLen > i.storedBytes * (1 - o.minGain)) return { ...base, decision: "kept-no-gain", detail: `${detail} would be ${newLen} bytes` };
 
     // Replace stream bytes. Object number, and every reference to it, stay intact.
     s.ref.writeRawStream(jpg);
     s.ref.put("Filter", doc.newName("DCTDecode"));
     s.ref.delete("DecodeParms");
     s.ref.put("BitsPerComponent", 8);
-    s.ref.put("Width", enc.getWidth());
-    s.ref.put("Height", enc.getHeight());
+    s.ref.put("Width", w);
+    s.ref.put("Height", h);
     // The /ColorSpace entry is left untouched. Pixels were not colour-converted (Gray/RGB/ICC/Cal with 1 or 3 components).
     return {
       ...base,
       decision: "recompressed",
       afterBytes: newLen,
-      afterSize: [enc.getWidth(), enc.getHeight()],
+      afterSize: [w, h],
+      detail,
     };
   } finally {
     small?.destroy();
@@ -654,7 +700,7 @@ export function saveOptionsFor(pdfaPart: string | null): string {
   return `garbage=deduplicate,compress,compress-fonts,compress-images${objstms}`;
 }
 
-export function optimize(input: Uint8Array, options: OptimizeOptions, onProgress?: Progress): OptimizeResult {
+export async function optimize(input: Uint8Array, options: OptimizeOptions, onProgress?: Progress): Promise<OptimizeResult> {
   const t0 = performance.now();
   const inputBytes = input.byteLength;
   onProgress?.({ phase: "opening" });
@@ -667,10 +713,14 @@ export function optimize(input: Uint8Array, options: OptimizeOptions, onProgress
   try {
     const { report, scans } = analyzeOpen(doc, inputBytes);
     before = fingerprint(doc, onProgress, "summarizing");
-    scans.forEach((s, k) => {
-      onProgress?.({ phase: "images", done: k, total: scans.length });
-      outcomes.push(rewriteImage(doc!, s, options));
-    });
+    // Largest images first: later (smaller) decodes then fit into blocks already freed,
+    // which limits WASM heap fragmentation (the heap never shrinks).
+    const order = [...scans].sort((x, y) => y.info.width * y.info.height - x.info.width * x.info.height);
+    for (let k = 0; k < order.length; k++) {
+      onProgress?.({ phase: "images", done: k, total: order.length });
+      outcomes.push(await rewriteImage(doc, order[k], options));
+    }
+    outcomes.sort((x, y) => x.objNum - y.objNum);
     onProgress?.({ phase: "images", done: scans.length, total: scans.length });
     onProgress?.({ phase: "saving" });
     saveOptions = saveOptionsFor(report.features.pdfaPart);

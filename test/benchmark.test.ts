@@ -14,18 +14,23 @@ const SPECS: [string, FixtureSpec][] = [
   ["bilevel 300dpi Flate", { mode: "bilevel", encoding: "flate", pages: 3 }],
   ["color 600dpi JPEG q97", { mode: "color", encoding: "jpeg", jpegQuality: 97, dpi: 600, pages: 1 }],
   ["color 300dpi JPEG q75", { mode: "color", encoding: "jpeg", jpegQuality: 75, pages: 3 }],
+  ["phone-style JPEG q92 4:2:0", { mode: "color", encoding: "jpeg", jpegQuality: 92, jpegChroma: "420", pages: 3 }],
+  ["phone-style JPEG q85 4:2:0", { mode: "color", encoding: "jpeg", jpegQuality: 85, jpegChroma: "420", pages: 3 }],
+  ["iPhone photo→PDF 12MP q93 (72 DPI page)", { mode: "color", encoding: "jpeg", jpegQuality: 93, jpegChroma: "420", dpi: 72, size: [3024, 4032], pages: 2 }],
+  ["iPhone photo→PDF 24MP q93 (72 DPI page)", { mode: "color", encoding: "jpeg", jpegQuality: 93, jpegChroma: "420", dpi: 72, size: [4284, 5712], pages: 1 }],
 ];
 
 describe.skipIf(!process.env.BENCH)("benchmark", () => {
-  it("prints size/time table", () => {
+  it("prints size/time table", async () => {
     const rows: string[] = ["| Fixture | Input | " + PROFILE_ORDER.join(" | ") + " |", "|---|---|" + PROFILE_ORDER.map(() => "---").join("|") + "|"];
     for (const [name, spec] of SPECS) {
-      const input = makeScanPdf(spec);
-      const cells = PROFILE_ORDER.map((p) => {
-        const r = optimize(input, optionsFor(p));
+      const input = await makeScanPdf(spec);
+      const cells: string[] = [];
+      for (const p of PROFILE_ORDER) {
+        const r = await optimize(input, optionsFor(p));
         const red = (1 - r.outputBytes / r.inputBytes) * 100;
-        return `${(r.outputBytes / 1e6).toFixed(2)} MB (−${red.toFixed(1)}%) ${(r.elapsedMs / 1000).toFixed(1)}s${r.verified ? "" : " ✕"}`;
-      });
+        cells.push(`${(r.outputBytes / 1e6).toFixed(2)} MB (−${red.toFixed(1)}%) ${(r.elapsedMs / 1000).toFixed(1)}s${r.verified ? "" : " ✕"}`);
+      }
       rows.push(`| ${name} | ${(input.byteLength / 1e6).toFixed(2)} MB | ${cells.join(" | ")} |`);
     }
     console.log("\n" + rows.join("\n"));

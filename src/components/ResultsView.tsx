@@ -57,7 +57,9 @@ export function ResultsView({
     const file = new File([blob], outputName(originalName, name), { type: "application/pdf" });
     if (navigator.canShare?.({ files: [file] })) {
       try {
-        await navigator.share({ files: [file], title: file.name });
+        // Files only. Adding title/text makes iOS share a second, text item,
+        // and "Save to Files" then saves a .txt with the file name instead of (or beside) the PDF.
+        await navigator.share({ files: [file] });
       } catch (e) {
         if ((e as Error).name !== "AbortError") setShareError(`Sharing failed (${(e as Error).message}). Try Download instead.`);
       }
@@ -82,7 +84,10 @@ export function ResultsView({
         </div>
       )}
       {result.verified && !meaningful && (
-        <div className="notice">This document is already efficiently compressed for this profile. Keep your original.</div>
+        <div className="notice">
+          Already efficiently compressed for this profile. Re-encoding would not save at least 5% without lowering
+          quality. Keep your original{result.options.profile !== "compact" ? ", or try Compact for a smaller file (reduces resolution to 200 DPI)" : ""}.
+        </div>
       )}
 
       <h2 className="section-title">Result</h2>

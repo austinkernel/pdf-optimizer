@@ -18,7 +18,7 @@ type Stage =
   | { kind: "done"; file: File; report: AnalysisReport; result: OptimizeResult; blob: Blob; pageRequests: number }
   | { kind: "error"; message: string; file?: File; report?: AnalysisReport };
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 const SOURCE_URL = "https://github.com/austinkernel/pdf-optimizer";
 const PROFILE_KEY = "pdfopt.profile";
 
@@ -106,10 +106,13 @@ export default function App() {
     if (engine.current!.busy) return; // duplicate-tap guard
     setStage({ kind: "processing", file, report, progress: null, startedAt: Date.now() });
     const release = await holdWakeLock();
-    const req0 = pageRequestCount();
+    let req0 = pageRequestCount();
     try {
-      const result = await engine.current!.optimize(file, optionsFor(profile), (progress) =>
-        setStage((s) => (s.kind === "processing" ? { ...s, progress } : s)),
+      const result = await engine.current!.optimize(
+        file,
+        optionsFor(profile),
+        (progress) => setStage((s) => (s.kind === "processing" ? { ...s, progress } : s)),
+        () => (req0 = pageRequestCount()), // count from the moment the document reaches the engine
       );
       const blob = new Blob([result.bytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
       result.bytes = new Uint8Array(0); // drop the second copy; the Blob holds the output now

@@ -8,6 +8,10 @@
  *   synchronous WASM computation, and it frees all WASM memory at once.
  * - After an internal or memory error the worker is discarded, since the WASM
  *   heap may be in an undefined state.
+ * - After every compression job the worker is recycled. A WASM heap never shrinks
+ *   and fragments with large image buffers (measured: about +35 MB per job on
+ *   12 MP photos), so each job starts with a fresh heap. A replacement warms up
+ *   in the background while the user reads the result.
  */
 import type { ErrorCode, WorkerRequest, WorkerResponse } from "./protocol";
 import type { AnalysisReport, OptimizeOptions, OptimizeResult, ProgressEvent } from "./types";
@@ -73,6 +77,17 @@ export class EngineClient {
     return this.ready;
   }
 
+  /** Discards the current worker (freeing its whole WASM heap) and starts a fresh one. */
+  private recycle() {
+    this.worker?.terminate();
+    this.reset();
+    // Start the replacement after the result has been delivered, so the engine's own
+    // files (served from the offline cache) never load during a job.
+    setTimeout(() => {
+      if (!this.ready) this.warmUp().catch(() => {});
+    }, 1500);
+  }
+
   private reset() {
     this.worker = null;
     this.ready = null;
@@ -92,10 +107,11 @@ export class EngineClient {
         break;
       case "analysis":
         this.pending.delete(msg.id);
-        p.resolve(msg.report);
+        p.resolve(msg.report); // analysis decodes no images, so the heap stays small: keep the warm worker
         break;
       case "optimized":
         this.pending.delete(msg.id);
+        this.recycle();
         p.resolve(msg.result);
         break;
       case "error":
@@ -109,7 +125,11 @@ export class EngineClient {
     }
   }
 
-  private async run<T>(make: (id: number) => { req: WorkerRequest; transfer: Transferable[] }, onProgress?: (p: ProgressEvent) => void): Promise<T> {
+  private async run<T>(
+    make: (id: number) => { req: WorkerRequest; transfer: Transferable[] },
+    onProgress?: (p: ProgressEvent) => void,
+    onStart?: () => void,
+  ): Promise<T> {
     if (this.busy) throw new EngineFailure("internal", "Another document is already being processed.");
     const id = this.nextId++;
     const result = new Promise<T>((resolve, reject) => {
@@ -119,6 +139,7 @@ export class EngineClient {
       const w = await this.ensure();
       if (!this.pending.has(id)) return result; // cancelled while starting
       const { req, transfer } = make(id);
+      onStart?.(); // the document is handed to a ready engine: processing starts now
       w.postMessage(req, transfer);
     } catch (e) {
       this.pending.delete(id);
@@ -132,9 +153,14 @@ export class EngineClient {
     return this.run<AnalysisReport>((id) => ({ req: { id, type: "analyze", buffer }, transfer: [buffer] }), onProgress);
   }
 
-  async optimize(file: Blob, options: OptimizeOptions, onProgress?: (p: ProgressEvent) => void): Promise<OptimizeResult> {
+  async optimize(
+    file: Blob,
+    options: OptimizeOptions,
+    onProgress?: (p: ProgressEvent) => void,
+    onStart?: () => void,
+  ): Promise<OptimizeResult> {
     const buffer = await file.arrayBuffer();
-    return this.run<OptimizeResult>((id) => ({ req: { id, type: "optimize", buffer, options }, transfer: [buffer] }), onProgress);
+    return this.run<OptimizeResult>((id) => ({ req: { id, type: "optimize", buffer, options }, transfer: [buffer] }), onProgress, onStart);
   }
 
   cancel(): void {
