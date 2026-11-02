@@ -8,12 +8,21 @@
   scope, and works offline like the live app.
 - `ROADMAP.md`: working on, planned, ideas and done.
 ### Changed
+- **Updates live in a collapsed "App info & updates" section** (merged with
+  the old "Privacy & app info"). The centered update popup is gone. When a new
+  version has downloaded, a small blue "Update ready" badge appears next to
+  the section title (even while it is collapsed), and **Install update now**
+  is inside. "Updating…" shows while a download is in progress. Update
+  checks still run at launch, on return to the foreground and every 30 min.
+- Version 0.4.0 (in `next`).
 - The live app's service worker no longer answers requests under `/preview/`;
   otherwise it would serve the live app in place of the preview.
 - The web manifest is generated at build time (live and preview variants).
 - Deploy workflow publishes `main` at the site root and `next` under
   `/preview/` when that branch exists.
 ### Tests
+- e2e (21/21): updates hidden by default; simulated release shows the badge
+  (also collapsed), no popup, and Install update now reloads.
 - `npm run e2e:preview` (10 checks), including a check that removing the
   service worker fix makes it fail.
 

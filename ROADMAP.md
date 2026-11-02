@@ -22,7 +22,7 @@ It never sends documents anywhere and keeps no documents, same as the live app.
 
 ## Working on (in `next`)
 
-- [ ] **Updates moved into a collapsed "App info & updates" section**, like Privacy. No popup. A small dot and "Update ready" label next to the section title when a new version has downloaded.
+- [x] **Updates moved into a collapsed "App info & updates" section**, like Privacy. No popup. A small blue "Update ready" badge next to the section title when a new version has downloaded. *Built and tested; waiting for you to try it in the preview app.*
 
 ## Planned
 

@@ -30,8 +30,6 @@ export interface PwaState {
   offline: OfflineStatus;
   update: UpdateState;
   lastChecked: number | null;
-  /** True when "ready" was reached and the user has not dismissed the prompt. */
-  promptVisible: boolean;
 }
 
 const supported = import.meta.env.PROD && "serviceWorker" in navigator;
@@ -39,7 +37,6 @@ let state: PwaState = {
   offline: { supported: "serviceWorker" in navigator, ready: false },
   update: supported ? "idle" : "unsupported",
   lastChecked: null,
-  promptVisible: false,
 };
 let reg: ServiceWorkerRegistration | null = null;
 let waiting: ServiceWorker | null = null;
@@ -64,14 +61,9 @@ export function applyUpdate() {
   waiting.postMessage("skip-waiting");
 }
 
-/** Hides the popup. The update stays ready, is shown in Settings, and the popup returns next launch. */
-export function dismissUpdatePrompt() {
-  set({ promptVisible: false });
-}
-
 function markReady(sw: ServiceWorker) {
   waiting = sw;
-  set({ update: "ready", promptVisible: true });
+  set({ update: "ready" });
 }
 
 function track(sw: ServiceWorker | null) {
@@ -91,10 +83,7 @@ function requestStatus() {
 /** Asks the server whether a newer version exists. Safe to call at any time. */
 export async function checkForUpdates(): Promise<void> {
   if (!reg || state.update === "checking" || state.update === "downloading") return;
-  if (state.update === "ready") {
-    set({ promptVisible: true });
-    return;
-  }
+  if (state.update === "ready") return; // already have a newer version waiting
   if (!navigator.onLine) {
     set({ update: "offline", lastChecked: Date.now() });
     return;

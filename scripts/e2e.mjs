@@ -49,20 +49,18 @@ async function networkQuiet(ms = 1500) {
   while (Date.now() - lastRequestAt < ms) await page.waitForTimeout(200);
 }
 
-/** The update popup can legitimately appear over any screen; close it if present. */
-async function dismissUpdateIfShown() {
-  const later = page.getByRole("button", { name: "Later" });
-  if (await later.isVisible().catch(() => false)) await later.click();
+/** Opens the collapsed "App info & updates" section if it is closed. */
+async function openAppInfo() {
+  const details = page.locator("details.privacy");
+  if (!(await details.evaluate((d) => d.open))) await details.locator("summary").click();
 }
 
 async function compressFile(file, { shotPrefix } = {}) {
-  await dismissUpdateIfShown();
   await page.locator('input[type="file"]').setInputFiles(file);
   await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
   if (shots && shotPrefix) await page.screenshot({ path: join(shots, `${shotPrefix}-analysis.png`), fullPage: true });
   await page.getByRole("radio", { name: /Balanced/ }).click();
   await networkQuiet();
-  await dismissUpdateIfShown();
   recording = true;
   await page.getByRole("button", { name: "Compress" }).click();
   await page.locator(".hero-number").waitFor({ timeout: 120_000 });
@@ -85,6 +83,8 @@ try {
   check("service worker controls the page", swControlled);
 
   // Updates: manual check against an unchanged server reports up to date.
+  check("updates are hidden by default (no update section visible)", !(await page.getByRole("button", { name: "Check for updates" }).isVisible()));
+  await openAppInfo();
   await page.getByRole("button", { name: "Check for updates" }).click();
   await page.getByText(/Up to date/).waitFor({ timeout: 15_000 });
   check("manual update check reports up to date", true);
@@ -131,26 +131,28 @@ try {
     await page.getByRole("button", { name: "Close" }).click();
   }
 
-  // Simulated new deploy: change sw.js on the server. The app must detect it on the next
-  // check and show the centered update popup, which can be dismissed and then applied.
+  // Simulated new deploy: change sw.js on the server. The app must detect it on the next check
+  // and show a small "Update ready" badge on the collapsed section (no popup), then install it.
   {
     const swPath = join(process.cwd(), "dist", "sw.js");
     const original = readFileSync(swPath, "utf8");
     writeFileSync(swPath, original + "\n// e2e: simulated new release\n");
     try {
       await page.getByRole("button", { name: "Done" }).click();
+      await openAppInfo();
       await page.getByRole("button", { name: "Check for updates" }).click();
-      const dialog = page.getByRole("dialog", { name: "Update available" });
-      await dialog.waitFor({ timeout: 30_000 });
-      await page.waitForTimeout(400);
-      if (shots) await page.screenshot({ path: join(shots, "7-update-dialog.png") });
-      check("new release detected: centered update popup shown", true);
-      await page.getByRole("button", { name: "Later" }).click();
-      await dialog.waitFor({ state: "detached" });
+      const badge = page.locator("details.privacy summary .update-badge", { hasText: "Update ready" });
+      await badge.waitFor({ timeout: 30_000 });
+      check("new release detected: 'Update ready' badge on the section", true);
+      check("no popup or modal appeared", (await page.getByRole("dialog").count()) === 0);
+      await page.locator("details.privacy summary").click(); // collapse: badge must still be visible
+      check("badge visible while the section is collapsed", await badge.isVisible());
+      await page.waitForTimeout(300);
+      if (shots) await page.screenshot({ path: join(shots, "7-update-badge.png") });
+      await page.locator("details.privacy summary").click();
       const installBtn = page.getByRole("button", { name: "Install update now" });
-      check("popup can be dismissed; Settings offers Install update now", await installBtn.isVisible());
       const nav = page.waitForEvent("load", { timeout: 30_000 });
-      await installBtn.click(); // installs directly and reloads
+      await installBtn.click(); // installs and reloads
       await nav;
       await page.getByRole("button", { name: "Choose PDF" }).waitFor();
       check("Install update now reloads into the new version", true);
@@ -168,10 +170,8 @@ try {
   await ctx.setOffline(false);
 
   // Cancellation mid-job returns to settings and the engine recovers.
-  await dismissUpdateIfShown();
   await page.locator('input[type="file"]').setInputFiles(big);
   await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
-  await dismissUpdateIfShown();
   await page.getByRole("button", { name: "Compress" }).click();
   await page.locator(".processing").waitFor();
   await page.waitForTimeout(400);
@@ -179,7 +179,6 @@ try {
   await page.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 10_000 });
   check("cancel returns to settings", true);
-  await dismissUpdateIfShown();
   await page.getByRole("button", { name: "Compress" }).click();
   await page.locator(".hero-number").waitFor({ timeout: 120_000 });
   check("engine works again after cancel", true);
@@ -187,7 +186,6 @@ try {
   // Non-PDF input gives a clear error.
   const bogus = join(work, "notes.pdf");
   writeFileSync(bogus, "this is not a pdf");
-  await dismissUpdateIfShown();
   await page.getByRole("button", { name: "Done" }).click();
   await page.locator('input[type="file"]').setInputFiles(bogus);
   await page.locator(".notice-error").waitFor({ timeout: 30_000 });

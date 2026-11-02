@@ -181,3 +181,20 @@ button { font: inherit; }
   background: var(--orange); color: #000; text-align: center; font-size: 13px; font-weight: 600;
   padding: 6px 12px;
 }
+
+/* "App info & updates" summary row: title on the left, update badge on the right */
+.privacy summary {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  list-style: none; min-height: 44px;
+}
+.privacy summary::-webkit-details-marker { display: none; }
+.privacy summary::before { content: "▸"; margin-right: 8px; transition: transform 0.15s; display: inline-block; }
+.privacy[open] summary::before { transform: rotate(90deg); }
+.privacy summary > span:first-child { flex: 1; }
+.update-badge {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent);
+  font-size: 14px; font-weight: 600;
+}
+.update-badge.quiet { background: var(--fill); color: var(--text-2); font-weight: 400; }
+.update-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--accent); }

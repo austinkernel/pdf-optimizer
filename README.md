@@ -79,10 +79,10 @@ HTTPS. To install it on an iPhone:
    caches the app (about 15 MB) for offline use.
 
 Updates: the app checks for a new version at launch, whenever it returns to
-the foreground, and every 30 minutes. When one has downloaded, an "Update
-available" popup appears. Tap **Update now**, or later use **App & updates →
-Install update now**. **Check for updates** in the same section checks
-immediately.
+the foreground, and every 30 minutes. When one has downloaded, a small
+**Update ready** badge appears next to **App info & updates** on the main
+screen. Open that section and tap **Install update now**. **Check for
+updates** in the same section checks immediately.
 
 Diagnostics: **Export diagnostics** (on the analysis and results screens)
 produces a structure-only text report for troubleshooting, with no file name,
