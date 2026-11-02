@@ -53,6 +53,8 @@ function imageSummary(images: ImageInfo[]) {
     formats: [...byFilter].map(([f, n]) => `${n} ${f}`).join(", "),
     chroma: [...byChroma].map(([c, n]) => `${n} × ${c}`).join(", "),
     dpi: range(images.map((i) => i.minDpi).filter((d): d is number => d !== null)),
+    effDpi: range(images.map((i) => i.minEffectiveDpi).filter((d): d is number => d !== null)),
+    oversized: images.some((i) => i.onOversizedPage),
     jpegQ: range(images.map((i) => i.jpegQualityEstimate).filter((q): q is number => q !== null)),
     dims: range(images.map((i) => i.width)) + " × " + range(images.map((i) => i.height)),
   };
@@ -86,7 +88,14 @@ export function AnalysisView({ report: r, fileName }: { report: AnalysisReport; 
             <Row label="Type" value={im.classes} />
             <Row label="Encoding" value={im.formats} />
             <Row label="Pixel size" value={im.dims} />
-            <Row label="Resolution" value={`${im.dpi} DPI`} est />
+            {im.oversized ? (
+              <>
+                <Row label="Resolution on page" value={`${im.dpi} DPI`} est />
+                <Row label="At Letter size" value={`${im.effDpi} DPI`} est />
+              </>
+            ) : (
+              <Row label="Resolution" value={`${im.dpi} DPI`} est />
+            )}
             {im.jpegQ !== "n/a" && <Row label="JPEG quality" value={im.jpegQ} est />}
             {im.chroma && <Row label="Colour sampling" value={im.chroma} />}
           </>

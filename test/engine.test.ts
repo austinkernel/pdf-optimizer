@@ -20,6 +20,9 @@ beforeAll(async () => {
   F.lowQJpeg = await makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 70, pages: 1 });
   // Like a phone/scanner-app scan: colour JPEG q92, 4:2:0 chroma (the case that saved 0% with MuPDF's 4:4:4 encoder).
   F.phoneScan = await makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 92, jpegChroma: "420", links: true });
+  // Like iOS "photos → PDF": camera photo (q93, 4:2:0) on a page sized at 72 DPI (42 × 56 in and 59.5 × 79.3 in).
+  F.photoPdf12 = await makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 93, jpegChroma: "420", dpi: 72, size: [3024, 4032], pages: 1 });
+  F.photoPdf24 = await makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 93, jpegChroma: "420", dpi: 72, size: [4284, 5712], pages: 1 });
 }, 120_000);
 
 describe("jpeg quality estimation", () => {
@@ -169,6 +172,32 @@ describe("compression effectiveness", () => {
     const b = await optimize(F.colorFlate, optionsFor("high"));
     expect(b.images[0].detail).toMatch(/mozjpeg 4:4:4 q95/);
   });
+  it("judges photo-sized pages at Letter size (regression: real 103 MB photo PDF was never downsampled)", async () => {
+    const a = analyze(F.photoPdf12);
+    expect(a.images[0]).toMatchObject({ minDpi: 72, onOversizedPage: true, width: 3024, height: 4032 });
+    expect(a.images[0].minEffectiveDpi).toBe(367); // 4032 px / 11 in
+    expect(a.warnings.join(" ")).toMatch(/oversized, photo-sized pages/);
+
+    // Balanced: 367 ≤ 400, so no downsampling; q93 → q90 re-encode only.
+    const bal = await optimize(F.photoPdf12, optionsFor("balanced"));
+    expect(bal.verified).toBe(true);
+    expect(bal.images[0]).toMatchObject({ decision: "recompressed", afterSize: [3024, 4032] });
+
+    // Compact: 367 > 250, so reduce to 200 DPI-at-Letter, a 2200 px long side.
+    const cmp = await optimize(F.photoPdf12, optionsFor("compact"));
+    expect(cmp.verified).toBe(true);
+    expect(cmp.images[0].afterSize[1]).toBeGreaterThanOrEqual(2195);
+    expect(cmp.images[0].afterSize[1]).toBeLessThanOrEqual(2200);
+    expect(cmp.outputBytes).toBeLessThan(cmp.inputBytes * 0.5);
+
+    // 24 MP photo: 519 DPI-at-Letter, so Balanced reduces it to 300 (3300 px long side).
+    const big = await optimize(F.photoPdf24, optionsFor("balanced"));
+    expect(big.verified).toBe(true);
+    expect(big.images[0].afterSize[1]).toBeGreaterThanOrEqual(3298);
+    expect(big.images[0].afterSize[1]).toBeLessThanOrEqual(3302);
+    // Page geometry is untouched.
+    expect(analyze(big.bytes).pages[0]).toMatchObject({ widthPt: 4284, heightPt: 5712 });
+  }, 120_000);
   it("leaves bilevel images byte-identical", async () => {
     const r = await optimize(F.bilevel, optionsFor("compact"));
     expect(r.images.every((i) => i.decision === "kept-bilevel")).toBe(true);
@@ -185,7 +214,9 @@ describe("compression effectiveness", () => {
     expect(analyze(r.bytes).images[0].minDpi).toBe(300);
   });
   it("never produces a larger file than the input", async () => {
-    for (const name of Object.keys(F)) {
+    // Photo fixtures are covered by their own test. Running every fixture × profile in one
+    // WASM instance fragments the heap; the app avoids that by using a fresh worker per job.
+    for (const name of Object.keys(F).filter((n) => !n.startsWith("photoPdf"))) {
       for (const p of PROFILE_ORDER) {
         const r = await optimize(F[name], optionsFor(p));
         expect(r.outputBytes, `${name}/${p}`).toBeLessThanOrEqual(r.inputBytes * 1.01);

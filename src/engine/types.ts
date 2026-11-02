@@ -49,6 +49,11 @@ export interface ImageInfo {
   /** Lowest effective DPI over all placements (null if never drawn on a page). Estimated from the drawing matrix. */
   minDpi: number | null;
   maxDpi: number | null;
+  /** DPI used for downsampling decisions: same as minDpi/maxDpi, except on oversized pages, where it is measured as if printed at Letter size. */
+  minEffectiveDpi: number | null;
+  maxEffectiveDpi: number | null;
+  /** Drawn on a page larger than any paper size (photo-to-PDF style). */
+  onOversizedPage: boolean;
   /** Estimated IJG quality for JPEG streams (null if not JPEG or not estimable). */
   jpegQualityEstimate: number | null;
   /** Chroma layout of JPEG streams: "420" (any subsampling), "444", "gray"; null if not JPEG. */

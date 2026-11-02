@@ -16,6 +16,8 @@ const SPECS: [string, FixtureSpec][] = [
   ["color 300dpi JPEG q75", { mode: "color", encoding: "jpeg", jpegQuality: 75, pages: 3 }],
   ["phone-style JPEG q92 4:2:0", { mode: "color", encoding: "jpeg", jpegQuality: 92, jpegChroma: "420", pages: 3 }],
   ["phone-style JPEG q85 4:2:0", { mode: "color", encoding: "jpeg", jpegQuality: 85, jpegChroma: "420", pages: 3 }],
+  ["iPhone photo→PDF 12MP q93 (72 DPI page)", { mode: "color", encoding: "jpeg", jpegQuality: 93, jpegChroma: "420", dpi: 72, size: [3024, 4032], pages: 2 }],
+  ["iPhone photo→PDF 24MP q93 (72 DPI page)", { mode: "color", encoding: "jpeg", jpegQuality: 93, jpegChroma: "420", dpi: 72, size: [4284, 5712], pages: 1 }],
 ];
 
 describe.skipIf(!process.env.BENCH)("benchmark", () => {

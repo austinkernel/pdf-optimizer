@@ -30,7 +30,11 @@ page.on("pageerror", (e) => errors.push(String(e)));
 // (MuPDF logs parser diagnostics via console.error for damaged input; those are expected, so only uncaught errors count.)
 let recording = false;
 const requestsDuringJob = [];
-ctx.on("request", (r) => recording && requestsDuringJob.push(r.url()));
+const allRequests = [];
+ctx.on("request", (r) => {
+  allRequests.push({ url: r.url(), method: r.method(), hasBody: !!r.postDataBuffer() });
+  if (recording) requestsDuringJob.push(r.url());
+});
 
 const results = [];
 const check = (name, ok, detail = "") => {
@@ -38,11 +42,19 @@ const check = (name, ok, detail = "") => {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
 };
 
+/** Waits until no request has been seen for `ms` (the engine worker has finished loading its own files). */
+let lastRequestAt = Date.now();
+ctx.on("request", () => (lastRequestAt = Date.now()));
+async function networkQuiet(ms = 1500) {
+  while (Date.now() - lastRequestAt < ms) await page.waitForTimeout(200);
+}
+
 async function compressFile(file, { shotPrefix } = {}) {
   await page.locator('input[type="file"]').setInputFiles(file);
   await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
   if (shots && shotPrefix) await page.screenshot({ path: join(shots, `${shotPrefix}-analysis.png`), fullPage: true });
   await page.getByRole("radio", { name: /Balanced/ }).click();
+  await networkQuiet();
   recording = true;
   await page.getByRole("button", { name: "Compress" }).click();
   await page.locator(".hero-number").waitFor({ timeout: 120_000 });
@@ -131,6 +143,9 @@ try {
     await page.screenshot({ path: join(shots, "5-results-dark.png"), fullPage: true });
   }
   check("no uncaught page errors", errors.length === 0, errors.join(" | "));
+  // Whole session: only GETs of the app's own files. No uploads, no other origins.
+  const bad = allRequests.filter((r) => r.method !== "GET" || r.hasBody || !r.url.startsWith(url));
+  check("entire session: only same-origin GETs, no request bodies", bad.length === 0, `${allRequests.length} requests; ${bad.map((b) => `${b.method} ${b.url}`).join(", ")}`);
 } catch (e) {
   check("e2e run completed", false, String(e));
   if (shots) await page.screenshot({ path: join(shots, "error.png"), fullPage: true }).catch(() => {});

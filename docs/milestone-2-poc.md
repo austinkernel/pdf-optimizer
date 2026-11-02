@@ -153,3 +153,24 @@ For a source that is already q90 4:2:0, re-encoding at q90 saves under 10%
 with any encoder. Further savings need lower quality or lower resolution.
 That is a property of the source, not of the tool. A visual check of 4:2:0
 on red stamp edges and dark text at 1.5× showed no visible difference.
+
+### Second finding: photo-sized pages
+
+The owner's analysis screen showed 33 DCT colour images, 3024–5712 ×
+4032–5712 px, JPEG quality ≈93, on pages of 59.5 × 79.3 in (and 42 × 56 in).
+These are iPhone camera photos converted to PDF with the page sized at 72 DPI.
+DPI-based downsampling therefore saw 72 DPI and never triggered. Pages whose
+long side exceeds 17 in are now evaluated as if printed at Letter size: a 4032
+px long side is 367 DPI, a 5712 px long side is 519 DPI.
+
+| iPhone photo → PDF fixture (q93 4:2:0, 72 DPI page) | Balanced | Compact |
+|---|---|---|
+| 12 MP | −17.3% (q93 → q90, no downsampling) | −90.5% (→ 200 DPI at Letter) |
+| 24 MP | −84.8% (→ 300 DPI at Letter) | −96.7% |
+
+### Third finding: heap fragmentation across jobs
+
+In one WASM instance the MuPDF heap grew 79 → 220 MB over six jobs on 12 MP
+photos, in steps of one decoded image (36.6 MB). WASM memory cannot shrink,
+so the client now recycles the worker after every compression job.
+`test/memprobe.test.ts` reproduces the measurement.
