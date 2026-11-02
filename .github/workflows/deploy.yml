@@ -1,9 +1,17 @@
-# Builds and tests, then publishes the static app to GitHub Pages.
-# The site serves app files only; PDFs are processed on-device and never uploaded.
+# Publishes two apps to GitHub Pages from one site:
+#   /pdf-optimizer/          the live app, built from `main`
+#   /pdf-optimizer/preview/  a test build of the work in progress, built from `next` (if that branch exists)
+# Runs when main changes, and after CI passes on `next`. `workflow_run` workflows always execute on the
+# default branch, which keeps the Pages deployment rules satisfied. The site serves app files only:
+# PDFs are processed on-device and never uploaded.
 name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [next]
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,21 +22,46 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    # For workflow_run, only deploy when CI on `next` succeeded.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: main
+          path: live
+      - name: Is there a preview branch?
+        id: next
+        working-directory: live
+        run: |
+          if git ls-remote --exit-code --heads origin next >/dev/null 2>&1; then echo "exists=true" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/checkout@v5
+        if: steps.next.outputs.exists == 'true'
+        with:
+          ref: next
+          path: preview-src
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - name: Build live app
+        working-directory: live
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Build preview app
+        if: steps.next.outputs.exists == 'true'
+        working-directory: preview-src
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          VITE_PREVIEW=1 npx vite build --outDir "$GITHUB_WORKSPACE/live/dist/preview" --emptyOutDir
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: dist
+          path: live/dist
   deploy:
     needs: build
     runs-on: ubuntu-latest

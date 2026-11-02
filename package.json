@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:preview": "tsc -b && vite build && VITE_PREVIEW=1 vite build --outDir dist/preview --emptyOutDir",
+    "e2e:preview": "node --experimental-strip-types scripts/e2e-preview.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",

@@ -31,6 +31,9 @@ const SW_SOURCE = (version: string, assets: string[]) => `/* generated: do not e
 const VERSION = ${JSON.stringify(version)};
 const CACHE = "pdf-optimizer-" + VERSION;
 const ASSETS = ${JSON.stringify(assets)};
+// The preview app (served under ./preview/) has its own service worker and scope.
+// This worker must not answer its requests, or the preview would show this app.
+const PREVIEW_PREFIX = new URL("./preview/", self.registration.scope).pathname;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((a) => new Request(a, { cache: "reload" })))));
@@ -58,6 +61,7 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // never touch other origins
+  if (url.pathname.startsWith(PREVIEW_PREFIX)) return;
   event.respondWith(
     caches.open(CACHE).then(async (cache) => {
       if (req.mode === "navigate") return (await cache.match("./index.html", { ignoreVary: true })) || fetch(req);

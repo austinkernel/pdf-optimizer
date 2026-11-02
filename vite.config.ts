@@ -1,12 +1,13 @@
 /// <reference types="vitest/config" />
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { appIdentity } from "./build/app-identity.ts";
 import { precacheServiceWorker } from "./build/precache-sw.ts";
 
 export default defineConfig({
   // Relative base: the same build works at a domain root or under /pdf-optimizer/ (GitHub Pages).
   base: "./",
-  plugins: [react(), precacheServiceWorker()],
+  plugins: [react(), appIdentity(), precacheServiceWorker()],
   worker: { format: "es" },
   optimizeDeps: { exclude: ["mupdf"] },
   build: {

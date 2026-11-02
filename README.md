@@ -36,9 +36,10 @@ src/
     worker.ts        Web Worker entry
     client.ts        UI-side job runner: progress, cancel (terminates worker), dedupe
   components/        iOS-style screens: analysis, profile picker, processing, results
-  pwa.ts             service-worker registration, update checks/popup state, offline status
+  pwa.ts             service-worker registration, update checks, offline status
   diagnostics.ts     structure-only diagnostics report
 build/precache-sw.ts build-time generated precache service worker (no runtime caching)
+build/app-identity.ts live vs preview app name, icons and manifest
 test/                Vitest suite with synthetic scan fixtures (no real documents)
 scripts/e2e.mjs      end-to-end test of the built app in headless Chromium
 docs/                feasibility report and milestone reports
@@ -86,6 +87,19 @@ immediately.
 Diagnostics: **Export diagnostics** (on the analysis and results screens)
 produces a structure-only text report for troubleshooting, with no file name,
 text, metadata values, links or image content. It is shown before sharing.
+
+## Releases and the preview app
+
+Work is collected on the `next` branch and tried on the phone through a
+second, orange **PDF Optimizer Preview** app at
+`https://<user>.github.io/pdf-optimizer/preview/`, before one merge releases
+it all. The plan and status are in [`ROADMAP.md`](ROADMAP.md).
+
+- `npm run build:preview` builds the live app and the preview into `dist/`.
+- `npm run e2e:preview` checks that the two apps do not interfere (separate
+  service worker scopes, names and icons).
+- `.github/workflows/deploy.yml` publishes `main` at the site root and `next`
+  under `/preview/`.
 
 ## Known limitations (current version)
 

@@ -21,6 +21,7 @@ type Stage =
   | { kind: "error"; message: string; file?: File; report?: AnalysisReport };
 
 const VERSION = "0.3.0";
+const IS_PREVIEW = import.meta.env.VITE_PREVIEW === "1";
 const SOURCE_URL = "https://github.com/austinkernel/pdf-optimizer";
 const PROFILE_KEY = "pdfopt.profile";
 
@@ -157,11 +158,16 @@ export default function App() {
 
   return (
     <div className="app">
+      {IS_PREVIEW && (
+        <div className="preview-banner" role="note">
+          PREVIEW: a test build of upcoming changes. Not your live app.
+        </div>
+      )}
       {/* Never interrupt a running job: the prompt waits until processing ends. */}
       {pwa?.promptVisible && !busy && <UpdateDialog onUpdate={applyUpdate} onLater={dismissUpdatePrompt} />}
       {diagnostics !== null && <DiagnosticsDialog text={diagnostics} onClose={() => setDiagnostics(null)} />}
       <header className="header">
-        <h1>PDF Optimizer</h1>
+        <h1>{IS_PREVIEW ? "PDF Optimizer Preview" : "PDF Optimizer"}</h1>
         {stage.kind !== "home" && stage.kind !== "processing" && stage.kind !== "analyzing" && (
           <button type="button" className="btn-link" onClick={() => setStage({ kind: "home" })}>
             Done

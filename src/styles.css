@@ -176,3 +176,8 @@ button { font: inherit; }
 }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .modal-backdrop { animation: none; } }
+
+.preview-banner {
+  background: var(--orange); color: #000; text-align: center; font-size: 13px; font-weight: 600;
+  padding: 6px 12px;
+}
