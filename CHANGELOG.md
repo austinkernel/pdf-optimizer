@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+### Added
+- A preview app (orange icon, "PREVIEW" banner) served under `/preview/`,
+  built from the `next` branch, so upcoming changes can be tried on the phone
+  before release. It has its own name, icons, manifest and service worker
+  scope, and works offline like the live app.
+- `ROADMAP.md`: working on, planned, ideas and done.
+### Changed
+- The live app's service worker no longer answers requests under `/preview/`;
+  otherwise it would serve the live app in place of the preview.
+- The web manifest is generated at build time (live and preview variants).
+- Deploy workflow publishes `main` at the site root and `next` under
+  `/preview/` when that branch exists.
+### Tests
+- `npm run e2e:preview` (10 checks), including a check that removing the
+  service worker fix makes it fail.
+
 ## 0.3.0: updates and diagnostics
 ### Added
 - **Reliable update checks.** iOS resumes Home Screen apps instead of
