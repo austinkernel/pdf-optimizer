@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.3.0: updates and diagnostics
+### Added
+- **Reliable update checks.** iOS resumes Home Screen apps instead of
+  relaunching them, so 0.2.0 kept running after 0.2.1 was deployed. The app
+  now checks at launch, every time it returns to the foreground (at most once
+  a minute), and every 30 minutes while open.
+- **Update popup** in the middle of the screen when a new version is
+  downloaded, with "Update now" and "Later" (or ✕). It never appears during
+  a compression; it waits until the job ends.
+- **App & updates section**, visible without opening anything: version,
+  update status ("Up to date (checked 7:10 PM)", "Downloading update…",
+  "Update ready to install", offline or error), and a **Check for updates** /
+  **Install update now** button.
+- **Export diagnostics** on the analysis and results screens. A
+  structure-only report (pages, images: pixels, encoding, DPI, JPEG quality,
+  chroma; features as counts; last compression decisions and checks)
+  excludes the file name, metadata values, text, link targets and image
+  content. It is shown in full before sharing, via Share / Save as text
+  file or Copy.
+### Changed
+- The small update bar at the top is replaced by the popup.
+### Tests
+- Unit: the diagnostics report contains structure and never metadata
+  values, text or link targets.
+- e2e (19/19):
+  - a manual check reports up to date;
+  - a simulated new release shows the popup, which can be dismissed,
+    reinstalled from Settings, and reloads into the new version;
+  - the diagnostics dialog is structure-only.
+
 ## 0.2.1: fixes from first on-device test
 ### Fixed
 - **Save to Files saved a text file** containing the PDF's name. The share

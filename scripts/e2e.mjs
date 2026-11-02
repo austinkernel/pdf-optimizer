@@ -1,7 +1,7 @@
 // End-to-end test of the built PWA in headless Chromium with an iPhone-sized viewport.
 // Usage: npm run build && node --experimental-strip-types scripts/e2e.mjs [screenshotDir]
 // (Chromium, not WebKit: iOS-specific behaviour still needs an on-device check.)
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { preview } from "vite";
@@ -49,12 +49,20 @@ async function networkQuiet(ms = 1500) {
   while (Date.now() - lastRequestAt < ms) await page.waitForTimeout(200);
 }
 
+/** The update popup can legitimately appear over any screen; close it if present. */
+async function dismissUpdateIfShown() {
+  const later = page.getByRole("button", { name: "Later" });
+  if (await later.isVisible().catch(() => false)) await later.click();
+}
+
 async function compressFile(file, { shotPrefix } = {}) {
+  await dismissUpdateIfShown();
   await page.locator('input[type="file"]').setInputFiles(file);
   await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
   if (shots && shotPrefix) await page.screenshot({ path: join(shots, `${shotPrefix}-analysis.png`), fullPage: true });
   await page.getByRole("radio", { name: /Balanced/ }).click();
   await networkQuiet();
+  await dismissUpdateIfShown();
   recording = true;
   await page.getByRole("button", { name: "Compress" }).click();
   await page.locator(".hero-number").waitFor({ timeout: 120_000 });
@@ -76,6 +84,11 @@ try {
   const swControlled = await page.evaluate(() => !!navigator.serviceWorker.controller);
   check("service worker controls the page", swControlled);
 
+  // Updates: manual check against an unchanged server reports up to date.
+  await page.getByRole("button", { name: "Check for updates" }).click();
+  await page.getByText(/Up to date/).waitFor({ timeout: 15_000 });
+  check("manual update check reports up to date", true);
+
   await compressFile(small, { shotPrefix: "2" });
   const hero = await page.locator(".hero-number").innerText();
   const statuses = await page.locator(".check-row .status").allInnerTexts();
@@ -89,7 +102,7 @@ try {
   const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download" }).click()]);
   const out = join(work, "downloaded.pdf");
   await dl.saveAs(out);
-  const { readFileSync, statSync } = await import("node:fs");
+  const { statSync } = await import("node:fs");
   const head = readFileSync(out).subarray(0, 5).toString();
   check("downloaded file is a PDF", head === "%PDF-", `${statSync(out).size} bytes, name "${dl.suggestedFilename()}"`);
   // The browser build must encode with mozjpeg (4:2:0), not fall back to MuPDF's 4:4:4 encoder.
@@ -106,6 +119,46 @@ try {
     check("browser build encodes with mozjpeg (4:2:0)", layouts.length > 0 && layouts.every((l) => l === "420"), layouts.join(","));
   }
 
+  // Diagnostics: preview dialog with a structure-only report (no file name).
+  {
+    await page.getByRole("button", { name: "Export diagnostics" }).click();
+    const pre = page.locator(".diag-pre");
+    await pre.waitFor();
+    const text = await pre.innerText();
+    await page.waitForTimeout(400); // let the fade-in finish
+    if (shots) await page.screenshot({ path: join(shots, "6-diagnostics.png") });
+    check("diagnostics dialog shows structure-only report", text.includes("[images]") && text.includes("[last compression]") && !text.includes("scan-color"), `${text.split("\n").length} lines`);
+    await page.getByRole("button", { name: "Close" }).click();
+  }
+
+  // Simulated new deploy: change sw.js on the server. The app must detect it on the next
+  // check and show the centered update popup, which can be dismissed and then applied.
+  {
+    const swPath = join(process.cwd(), "dist", "sw.js");
+    const original = readFileSync(swPath, "utf8");
+    writeFileSync(swPath, original + "\n// e2e: simulated new release\n");
+    try {
+      await page.getByRole("button", { name: "Done" }).click();
+      await page.getByRole("button", { name: "Check for updates" }).click();
+      const dialog = page.getByRole("dialog", { name: "Update available" });
+      await dialog.waitFor({ timeout: 30_000 });
+      await page.waitForTimeout(400);
+      if (shots) await page.screenshot({ path: join(shots, "7-update-dialog.png") });
+      check("new release detected: centered update popup shown", true);
+      await page.getByRole("button", { name: "Later" }).click();
+      await dialog.waitFor({ state: "detached" });
+      const installBtn = page.getByRole("button", { name: "Install update now" });
+      check("popup can be dismissed; Settings offers Install update now", await installBtn.isVisible());
+      const nav = page.waitForEvent("load", { timeout: 30_000 });
+      await installBtn.click(); // installs directly and reloads
+      await nav;
+      await page.getByRole("button", { name: "Choose PDF" }).waitFor();
+      check("Install update now reloads into the new version", true);
+    } finally {
+      writeFileSync(swPath, original);
+    }
+  }
+
   // Offline: reload with the network cut off. App + 10 MB wasm must come from the cache.
   await ctx.setOffline(true);
   await page.reload();
@@ -115,8 +168,10 @@ try {
   await ctx.setOffline(false);
 
   // Cancellation mid-job returns to settings and the engine recovers.
+  await dismissUpdateIfShown();
   await page.locator('input[type="file"]').setInputFiles(big);
   await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
+  await dismissUpdateIfShown();
   await page.getByRole("button", { name: "Compress" }).click();
   await page.locator(".processing").waitFor();
   await page.waitForTimeout(400);
@@ -124,6 +179,7 @@ try {
   await page.getByRole("button", { name: "Cancel" }).click();
   await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 10_000 });
   check("cancel returns to settings", true);
+  await dismissUpdateIfShown();
   await page.getByRole("button", { name: "Compress" }).click();
   await page.locator(".hero-number").waitFor({ timeout: 120_000 });
   check("engine works again after cancel", true);
@@ -131,6 +187,7 @@ try {
   // Non-PDF input gives a clear error.
   const bogus = join(work, "notes.pdf");
   writeFileSync(bogus, "this is not a pdf");
+  await dismissUpdateIfShown();
   await page.getByRole("button", { name: "Done" }).click();
   await page.locator('input[type="file"]').setInputFiles(bogus);
   await page.locator(".notice-error").waitFor({ timeout: 30_000 });
