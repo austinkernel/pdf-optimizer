@@ -8,7 +8,9 @@ import { ProcessingView } from "./components/ProcessingView";
 import { ResultsView } from "./components/ResultsView";
 import { formatBytes } from "./format";
 import { pageRequestCount } from "./netMonitor";
-import { applyUpdate, subscribePwa, type OfflineStatus } from "./pwa";
+import { applyUpdate, checkForUpdates, dismissUpdatePrompt, subscribePwa, type PwaState, type UpdateState } from "./pwa";
+import { UpdateDialog, DiagnosticsDialog } from "./components/Dialogs";
+import { buildDiagnostics } from "./diagnostics";
 
 type Stage =
   | { kind: "home" }
@@ -18,9 +20,31 @@ type Stage =
   | { kind: "done"; file: File; report: AnalysisReport; result: OptimizeResult; blob: Blob; pageRequests: number }
   | { kind: "error"; message: string; file?: File; report?: AnalysisReport };
 
-const VERSION = "0.2.1";
+const VERSION = "0.3.0";
 const SOURCE_URL = "https://github.com/austinkernel/pdf-optimizer";
 const PROFILE_KEY = "pdfopt.profile";
+
+function updateLabel(u: UpdateState, lastChecked: number | null): string {
+  const when = lastChecked ? new Date(lastChecked).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : null;
+  switch (u) {
+    case "unsupported":
+      return "Not available in this build";
+    case "idle":
+      return "Not checked yet";
+    case "checking":
+      return "Checking…";
+    case "downloading":
+      return "Downloading update…";
+    case "ready":
+      return "Update ready to install";
+    case "current":
+      return `Up to date${when ? ` (checked ${when})` : ""}`;
+    case "offline":
+      return "Offline. Will check when connected";
+    case "error":
+      return "Couldn't check. Try again";
+  }
+}
 
 function loadProfile(): ProfileId {
   try {
@@ -66,7 +90,8 @@ export default function App() {
   if (!engine.current) engine.current = new EngineClient();
   const [stage, setStage] = useState<Stage>({ kind: "home" });
   const [profile, setProfile] = useState<ProfileId>(loadProfile);
-  const [pwa, setPwa] = useState<{ offline: OfflineStatus; updateReady: boolean }>({ offline: { supported: false, ready: false }, updateReady: false });
+  const [pwa, setPwa] = useState<PwaState | null>(null);
+  const [diagnostics, setDiagnostics] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => subscribePwa(setPwa), []);
@@ -126,17 +151,15 @@ export default function App() {
   };
 
   const cancel = () => engine.current!.cancel();
+  const busy = stage.kind === "processing" || stage.kind === "analyzing";
+  const showDiagnostics = (report: AnalysisReport, result?: OptimizeResult) =>
+    setDiagnostics(buildDiagnostics({ appVersion: VERSION, buildVersion: pwa?.offline.version, report, result }));
 
   return (
     <div className="app">
-      {pwa.updateReady && (
-        <div className="update-bar">
-          <span>An update is ready.</span>
-          <button type="button" className="btn-link" onClick={applyUpdate} disabled={stage.kind === "processing"}>
-            Reload
-          </button>
-        </div>
-      )}
+      {/* Never interrupt a running job: the prompt waits until processing ends. */}
+      {pwa?.promptVisible && !busy && <UpdateDialog onUpdate={applyUpdate} onLater={dismissUpdatePrompt} />}
+      {diagnostics !== null && <DiagnosticsDialog text={diagnostics} onClose={() => setDiagnostics(null)} />}
       <header className="header">
         <h1>PDF Optimizer</h1>
         {stage.kind !== "home" && stage.kind !== "processing" && stage.kind !== "analyzing" && (
@@ -180,6 +203,9 @@ export default function App() {
           <>
             <AnalysisView report={stage.report} fileName={stage.file.name} />
             <ProfilePicker value={profile} onChange={setProfile} />
+            <button type="button" className="btn btn-plain diag-btn" onClick={() => showDiagnostics(stage.report)}>
+              Export diagnostics
+            </button>
             <div className="actions sticky-actions">
               <button type="button" className="btn btn-primary btn-large" onClick={() => compress(stage.file, stage.report)}>
                 Compress
@@ -202,6 +228,11 @@ export default function App() {
             onNewFile={pickFile}
           />
         )}
+        {stage.kind === "done" && (
+          <button type="button" className="btn btn-plain diag-btn" onClick={() => showDiagnostics(stage.report, stage.result)}>
+            Export diagnostics
+          </button>
+        )}
 
         {stage.kind === "error" && (
           <div className="home">
@@ -217,7 +248,36 @@ export default function App() {
           </div>
         )}
 
-        {(stage.kind === "home" || stage.kind === "ready" || stage.kind === "done") && (
+        {(stage.kind === "home" || stage.kind === "ready" || stage.kind === "done") && pwa && (
+          <>
+            <h2 className="section-title">App &amp; updates</h2>
+            <div className="group">
+              <div className="row"><span className="row-label">Version</span><span className="row-value">{VERSION}</span></div>
+              <div className="row">
+                <span className="row-label">Updates</span>
+                <span className={`row-value${pwa.update === "ready" ? " accent" : ""}`}>{updateLabel(pwa.update, pwa.lastChecked)}</span>
+              </div>
+            </div>
+            <div className="actions compact-actions">
+              {pwa.update === "ready" ? (
+                <button type="button" className="btn btn-primary" onClick={applyUpdate}>
+                  Install update now
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => void checkForUpdates()}
+                  disabled={pwa.update === "unsupported" || pwa.update === "checking" || pwa.update === "downloading"}
+                >
+                  {pwa.update === "checking" ? "Checking…" : pwa.update === "downloading" ? "Downloading…" : "Check for updates"}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {(stage.kind === "home" || stage.kind === "ready" || stage.kind === "done") && pwa && (
           <details className="privacy">
             <summary>Privacy &amp; app info</summary>
             <div className="group">
@@ -230,8 +290,8 @@ export default function App() {
                 </span>
               </div>
               <div className="row"><span className="row-label">Page requests since launch</span><span className="row-value">{pageRequestCount()}</span></div>
-              <div className="row"><span className="row-label">Version</span><span className="row-value">{VERSION}{pwa.offline.version ? ` (${pwa.offline.version})` : ""}</span></div>
-              <div className="row"><span className="row-label">Engine</span><span className="row-value">MuPDF 1.28 (WebAssembly)</span></div>
+              <div className="row"><span className="row-label">Build</span><span className="row-value">{pwa.offline.version ?? "n/a"}</span></div>
+              <div className="row"><span className="row-label">Engine</span><span className="row-value">MuPDF 1.28 + mozjpeg (WebAssembly)</span></div>
             </div>
             <p className="footnote">
               The page's security policy blocks connections to any other server. Your PDF is read into memory, processed

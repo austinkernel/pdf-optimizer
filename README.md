@@ -36,7 +36,8 @@ src/
     worker.ts        Web Worker entry
     client.ts        UI-side job runner: progress, cancel (terminates worker), dedupe
   components/        iOS-style screens: analysis, profile picker, processing, results
-  pwa.ts             service-worker registration, update prompt, offline status
+  pwa.ts             service-worker registration, update checks/popup state, offline status
+  diagnostics.ts     structure-only diagnostics report
 build/precache-sw.ts build-time generated precache service worker (no runtime caching)
 test/                Vitest suite with synthetic scan fixtures (no real documents)
 scripts/e2e.mjs      end-to-end test of the built app in headless Chromium
@@ -76,7 +77,15 @@ HTTPS. To install it on an iPhone:
 3. Launch it once from the Home Screen while online, so the service worker
    caches the app (about 15 MB) for offline use.
 
-Updates: after a new deploy, the app shows "An update is ready". Tap Reload.
+Updates: the app checks for a new version at launch, whenever it returns to
+the foreground, and every 30 minutes. When one has downloaded, an "Update
+available" popup appears. Tap **Update now**, or later use **App & updates →
+Install update now**. **Check for updates** in the same section checks
+immediately.
+
+Diagnostics: **Export diagnostics** (on the analysis and results screens)
+produces a structure-only text report for troubleshooting, with no file name,
+text, metadata values, links or image content. It is shown before sharing.
 
 ## Known limitations (current version)
 
