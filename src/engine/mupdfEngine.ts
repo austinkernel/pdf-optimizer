@@ -11,6 +11,7 @@
  */
 import * as mupdf from "mupdf";
 import { estimateJpegQuality } from "./jpegQuality";
+import { encodeJpeg, jpegChroma, type Chroma } from "./jpegEncoder";
 import { downsampleArea } from "./resample";
 import type {
   AnalysisReport,
@@ -308,10 +309,16 @@ function scanImages(doc: PDFDocument, placements: Map<number, Placement>): Image
     const cs = colorSpaceOf(ref);
     let storedBytes = 0;
     let q: number | null = null;
+    let chroma: ImageInfo["jpegChroma"] = null;
     const raw = ref.readRawStream();
     try {
       storedBytes = raw.getLength();
-      if (filters.length === 1 && filters[0] === "DCTDecode") q = estimateJpegQuality(raw.asUint8Array().subarray(0, 4096));
+      if (filters.length === 1 && filters[0] === "DCTDecode") {
+        // Headers (EXIF/ICC APP segments, DQT, SOF) precede the scan data; 128 KB covers them.
+        const head = raw.asUint8Array().subarray(0, 131072);
+        q = estimateJpegQuality(head);
+        chroma = jpegChroma(head);
+      }
     } finally {
       raw.destroy();
     }
@@ -332,6 +339,7 @@ function scanImages(doc: PDFDocument, placements: Map<number, Placement>): Image
         minDpi: p ? Math.round(p.min) : null,
         maxDpi: p ? Math.round(p.max) : null,
         jpegQualityEstimate: q,
+        jpegChroma: chroma,
         hasSoftMask: !ref.get("SMask").isNull() || !ref.get("Mask").isNull(),
         isMask,
       },
@@ -585,7 +593,7 @@ function targetSize(i: ImageInfo, o: OptimizeOptions): [number, number] | null {
 }
 
 /** Re-encodes one image in place. Returns its outcome. All WASM objects are released before returning. */
-function rewriteImage(doc: PDFDocument, s: ImageScan, o: OptimizeOptions): ImageOutcome {
+async function rewriteImage(doc: PDFDocument, s: ImageScan, o: OptimizeOptions): Promise<ImageOutcome> {
   const i = s.info;
   const base: ImageOutcome = {
     objNum: i.objNum,
@@ -623,23 +631,31 @@ function rewriteImage(doc: PDFDocument, s: ImageScan, o: OptimizeOptions): Image
       pix = null;
       enc = small;
     }
-    const jpg = enc.asJPEG(o.jpegQuality!, false);
+    // Keep 4:2:0 if the source already was 4:2:0: that chroma detail is already gone.
+    // Otherwise the profile decides (High Quality keeps full colour resolution).
+    const chroma: Chroma = i.jpegChroma === "420" || o.chromaSubsampling ? "420" : "444";
+    const w = enc.getWidth();
+    const h = enc.getHeight();
+    const encoded = await encodeJpeg(enc, o.jpegQuality!, chroma);
+    const jpg = encoded.bytes;
     const newLen = jpg.byteLength;
-    if (newLen > i.storedBytes * (1 - o.minGain)) return { ...base, decision: "kept-no-gain", detail: `would be ${newLen} bytes` };
+    const detail = `${encoded.encoder} ${encoded.chroma === "gray" ? "gray" : encoded.chroma === "420" ? "4:2:0" : "4:4:4"} q${o.jpegQuality}`;
+    if (newLen > i.storedBytes * (1 - o.minGain)) return { ...base, decision: "kept-no-gain", detail: `${detail} would be ${newLen} bytes` };
 
     // Replace stream bytes. Object number, and every reference to it, stay intact.
     s.ref.writeRawStream(jpg);
     s.ref.put("Filter", doc.newName("DCTDecode"));
     s.ref.delete("DecodeParms");
     s.ref.put("BitsPerComponent", 8);
-    s.ref.put("Width", enc.getWidth());
-    s.ref.put("Height", enc.getHeight());
+    s.ref.put("Width", w);
+    s.ref.put("Height", h);
     // The /ColorSpace entry is left untouched. Pixels were not colour-converted (Gray/RGB/ICC/Cal with 1 or 3 components).
     return {
       ...base,
       decision: "recompressed",
       afterBytes: newLen,
-      afterSize: [enc.getWidth(), enc.getHeight()],
+      afterSize: [w, h],
+      detail,
     };
   } finally {
     small?.destroy();
@@ -654,7 +670,7 @@ export function saveOptionsFor(pdfaPart: string | null): string {
   return `garbage=deduplicate,compress,compress-fonts,compress-images${objstms}`;
 }
 
-export function optimize(input: Uint8Array, options: OptimizeOptions, onProgress?: Progress): OptimizeResult {
+export async function optimize(input: Uint8Array, options: OptimizeOptions, onProgress?: Progress): Promise<OptimizeResult> {
   const t0 = performance.now();
   const inputBytes = input.byteLength;
   onProgress?.({ phase: "opening" });
@@ -667,10 +683,10 @@ export function optimize(input: Uint8Array, options: OptimizeOptions, onProgress
   try {
     const { report, scans } = analyzeOpen(doc, inputBytes);
     before = fingerprint(doc, onProgress, "summarizing");
-    scans.forEach((s, k) => {
+    for (let k = 0; k < scans.length; k++) {
       onProgress?.({ phase: "images", done: k, total: scans.length });
-      outcomes.push(rewriteImage(doc!, s, options));
-    });
+      outcomes.push(await rewriteImage(doc, scans[k], options));
+    }
     onProgress?.({ phase: "images", done: scans.length, total: scans.length });
     onProgress?.({ phase: "saving" });
     saveOptions = saveOptionsFor(report.features.pdfaPart);

@@ -8,6 +8,7 @@
  * built. Optional extras: URI links, outline, annotations, /Rotate.
  */
 import * as mupdf from "mupdf";
+import { encodeJpeg } from "../src/engine/jpegEncoder.ts";
 
 export interface FixtureSpec {
   mode: "color" | "gray" | "bilevel";
@@ -15,6 +16,8 @@ export interface FixtureSpec {
   pages?: number;
   dpi?: number;
   jpegQuality?: number;
+  /** "420" encodes like a phone/scanner app (mozjpeg, 4:2:0). Default "444" (MuPDF encoder). */
+  jpegChroma?: "420" | "444";
   rotate?: 0 | 90 | 180 | 270;
   links?: boolean;
   outline?: boolean;
@@ -116,7 +119,7 @@ function rawPixels(pix: mupdf.Pixmap): Uint8Array {
   return out;
 }
 
-export function makeScanPdf(spec: FixtureSpec): Uint8Array {
+export async function makeScanPdf(spec: FixtureSpec): Promise<Uint8Array> {
   const pages = spec.pages ?? 2;
   const dpi = spec.dpi ?? 300;
   const [w, h] = spec.size ?? [612, 792];
@@ -145,7 +148,9 @@ export function makeScanPdf(spec: FixtureSpec): Uint8Array {
         const cs = spec.mode === "gray" ? "DeviceGray" : "DeviceRGB";
         const dict = { Type: "XObject", Subtype: "Image", Width: pw, Height: ph, ColorSpace: cs, BitsPerComponent: 8 };
         if (spec.encoding === "jpeg") {
-          imgRef = doc.addRawStream(pix.asJPEG(spec.jpegQuality ?? 97, false), { ...dict, Filter: "DCTDecode" });
+          const q = spec.jpegQuality ?? 97;
+          const jpg = spec.jpegChroma === "420" ? (await encodeJpeg(pix, q, "420")).bytes : pix.asJPEG(q, false);
+          imgRef = doc.addRawStream(jpg, { ...dict, Filter: "DCTDecode" });
         } else {
           imgRef = doc.addStream(rawPixels(pix), dict); // compressed with Flate on save
         }

@@ -18,7 +18,7 @@ type Stage =
   | { kind: "done"; file: File; report: AnalysisReport; result: OptimizeResult; blob: Blob; pageRequests: number }
   | { kind: "error"; message: string; file?: File; report?: AnalysisReport };
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 const SOURCE_URL = "https://github.com/austinkernel/pdf-optimizer";
 const PROFILE_KEY = "pdfopt.profile";
 

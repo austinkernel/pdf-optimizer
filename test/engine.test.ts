@@ -4,19 +4,22 @@ import { analyze, optimize, EngineError } from "../src/engine/mupdfEngine";
 import { optionsFor, PROFILE_ORDER } from "../src/engine/profiles";
 import { estimateJpegQuality } from "../src/engine/jpegQuality";
 import { downsampleArea } from "../src/engine/resample";
+import { encodeJpeg, jpegChroma } from "../src/engine/jpegEncoder";
 import { makeScanPdf } from "./fixtures";
 import { pdfjsSummary } from "./pdfjs";
 
 const F: Record<string, Uint8Array> = {};
 
-beforeAll(() => {
-  F.colorFlate = makeScanPdf({ mode: "color", encoding: "flate", links: true, outline: true, annotation: true });
-  F.colorJpeg = makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 97, links: true, outline: true });
-  F.grayJpeg = makeScanPdf({ mode: "gray", encoding: "jpeg", jpegQuality: 97 });
-  F.bilevel = makeScanPdf({ mode: "bilevel", encoding: "flate", links: true });
-  F.hiRes = makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 97, dpi: 600, pages: 1 });
-  F.rotated = makeScanPdf({ mode: "gray", encoding: "flate", rotate: 90, pages: 1 });
-  F.lowQJpeg = makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 70, pages: 1 });
+beforeAll(async () => {
+  F.colorFlate = await makeScanPdf({ mode: "color", encoding: "flate", links: true, outline: true, annotation: true });
+  F.colorJpeg = await makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 97, links: true, outline: true });
+  F.grayJpeg = await makeScanPdf({ mode: "gray", encoding: "jpeg", jpegQuality: 97 });
+  F.bilevel = await makeScanPdf({ mode: "bilevel", encoding: "flate", links: true });
+  F.hiRes = await makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 97, dpi: 600, pages: 1 });
+  F.rotated = await makeScanPdf({ mode: "gray", encoding: "flate", rotate: 90, pages: 1 });
+  F.lowQJpeg = await makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 70, pages: 1 });
+  // Like a phone/scanner-app scan: colour JPEG q92, 4:2:0 chroma (the case that saved 0% with MuPDF's 4:4:4 encoder).
+  F.phoneScan = await makeScanPdf({ mode: "color", encoding: "jpeg", jpegQuality: 92, jpegChroma: "420", links: true });
 }, 120_000);
 
 describe("jpeg quality estimation", () => {
@@ -30,6 +33,37 @@ describe("jpeg quality estimation", () => {
   });
   it("returns null for non-JPEG data", () => {
     expect(estimateJpegQuality(new Uint8Array([1, 2, 3, 4]))).toBeNull();
+  });
+});
+
+describe("jpeg encoder", () => {
+  const pix = () => {
+    const p = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, 256, 256], false);
+    const px = p.getPixels();
+    for (let i = 0; i < px.length; i++) px[i] = (i * 37 + (i >> 9) * 11) & 255; // busy colour pattern
+    return p;
+  };
+  it("uses mozjpeg and writes the requested chroma layout", async () => {
+    const p = pix();
+    const a = await encodeJpeg(p, 90, "420");
+    const b = await encodeJpeg(p, 90, "444");
+    p.destroy();
+    expect(a.encoder).toBe("mozjpeg");
+    expect(jpegChroma(a.bytes)).toBe("420");
+    expect(jpegChroma(b.bytes)).toBe("444");
+    expect(a.bytes.byteLength).toBeLessThan(b.bytes.byteLength);
+    expect(Math.abs(estimateJpegQuality(a.bytes)! - 90)).toBeLessThanOrEqual(2); // standard tables: quality keeps its IJG meaning
+  });
+  it("encodes grayscale as a single-channel JPEG", async () => {
+    const g = new mupdf.Pixmap(mupdf.ColorSpace.DeviceGray, [0, 0, 64, 64], false);
+    g.clear(100);
+    expect(jpegChroma((await encodeJpeg(g, 90, "420")).bytes)).toBe("gray");
+    g.destroy();
+  });
+  it("detects MuPDF's own output as 4:4:4", () => {
+    const p = pix();
+    expect(jpegChroma(p.asJPEG(90, false))).toBe("444");
+    p.destroy();
   });
 });
 
@@ -93,11 +127,11 @@ describe("analysis", () => {
 });
 
 describe("optimization preserves the document", () => {
-  const cases = ["colorFlate", "colorJpeg", "grayJpeg", "bilevel", "rotated"] as const;
+  const cases = ["colorFlate", "colorJpeg", "grayJpeg", "bilevel", "rotated", "phoneScan"] as const;
   for (const name of cases) {
     for (const profile of PROFILE_ORDER) {
       it(`${name} / ${profile}: verified, opens in pdf.js, text identical`, async () => {
-        const res = optimize(F[name], optionsFor(profile));
+        const res = await optimize(F[name], optionsFor(profile));
         const failed = res.verification.filter((c) => !c.ok);
         expect(failed).toEqual([]);
         expect(res.verified).toBe(true);
@@ -114,31 +148,46 @@ describe("optimization preserves the document", () => {
 });
 
 describe("compression effectiveness", () => {
-  it("compresses lossless color scans substantially at every lossy profile", () => {
-    const sizes = (["high", "balanced", "compact"] as const).map((p) => optimize(F.colorFlate, optionsFor(p)).outputBytes);
+  it("compresses lossless color scans substantially at every lossy profile", async () => {
+    const sizes: number[] = [];
+    for (const p of ["high", "balanced", "compact"] as const) sizes.push((await optimize(F.colorFlate, optionsFor(p))).outputBytes);
     expect(sizes[0]).toBeLessThan(F.colorFlate.byteLength * 0.5);
     expect(sizes[1]).toBeLessThan(sizes[0]);
     expect(sizes[2]).toBeLessThanOrEqual(sizes[1]);
   });
-  it("leaves bilevel images byte-identical", () => {
-    const r = optimize(F.bilevel, optionsFor("compact"));
+  it("shrinks phone-style 4:2:0 JPEG scans with Balanced (regression: was 0%)", async () => {
+    expect(analyze(F.phoneScan).images[0].jpegChroma).toBe("420");
+    const r = await optimize(F.phoneScan, optionsFor("balanced"));
+    expect(r.verified).toBe(true);
+    expect(r.images.every((i) => i.decision === "recompressed")).toBe(true);
+    expect(r.images[0].detail).toMatch(/mozjpeg 4:2:0 q90/);
+    expect(r.outputBytes).toBeLessThan(r.inputBytes * 0.95); // synthetic scans carry heavy sensor noise; real ones compress further
+  });
+  it("keeps 4:2:0 for 4:2:0 sources even in High Quality, and full colour for lossless sources", async () => {
+    const a = await optimize(F.phoneScan, optionsFor("high"));
+    for (const i of a.images.filter((x) => x.decision === "recompressed")) expect(i.detail).toMatch(/4:2:0/);
+    const b = await optimize(F.colorFlate, optionsFor("high"));
+    expect(b.images[0].detail).toMatch(/mozjpeg 4:4:4 q95/);
+  });
+  it("leaves bilevel images byte-identical", async () => {
+    const r = await optimize(F.bilevel, optionsFor("compact"));
     expect(r.images.every((i) => i.decision === "kept-bilevel")).toBe(true);
   });
-  it("does not re-encode JPEGs already at or below the target quality", () => {
-    const r = optimize(F.lowQJpeg, optionsFor("high"));
+  it("does not re-encode JPEGs already at or below the target quality", async () => {
+    const r = await optimize(F.lowQJpeg, optionsFor("high"));
     expect(r.images[0].decision).toBe("kept-already-efficient");
   });
-  it("downsamples 600 DPI images to the profile target", () => {
-    const r = optimize(F.hiRes, optionsFor("balanced"));
+  it("downsamples 600 DPI images to the profile target", async () => {
+    const r = await optimize(F.hiRes, optionsFor("balanced"));
     expect(r.images[0].decision).toBe("recompressed");
     expect(r.images[0].afterSize).toEqual([2550, 3300]); // 5100×6600 @600 → 300 DPI
     expect(r.verified).toBe(true);
     expect(analyze(r.bytes).images[0].minDpi).toBe(300);
   });
-  it("never produces a larger file than the input", () => {
+  it("never produces a larger file than the input", async () => {
     for (const name of Object.keys(F)) {
       for (const p of PROFILE_ORDER) {
-        const r = optimize(F[name], optionsFor(p));
+        const r = await optimize(F[name], optionsFor(p));
         expect(r.outputBytes, `${name}/${p}`).toBeLessThanOrEqual(r.inputBytes * 1.01);
       }
     }

@@ -31,6 +31,7 @@ src/
     mupdfEngine.ts   analysis, in-place image rewrite, save, verification (Node + worker)
     resample.ts      area-average downsampler (no ringing around text)
     jpegQuality.ts   IJG quality estimation from JPEG quantization tables
+    jpegEncoder.ts   mozjpeg (WASM) encoder: 4:2:0/4:4:4, trellis; MuPDF fallback
     profiles.ts      Lossless / High Quality / Balanced / Compact
     worker.ts        Web Worker entry
     client.ts        UI-side job runner: progress, cancel (terminates worker), dedupe

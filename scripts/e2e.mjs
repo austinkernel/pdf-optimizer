@@ -16,8 +16,8 @@ const work = join(tmpdir(), `pdfopt-e2e-${process.pid}`);
 mkdirSync(work, { recursive: true });
 const small = join(work, "scan-color.pdf");
 const big = join(work, "scan-big.pdf");
-writeFileSync(small, makeScanPdf({ mode: "color", encoding: "flate", links: true, outline: true, pages: 2 }));
-writeFileSync(big, makeScanPdf({ mode: "color", encoding: "flate", pages: 6 }));
+writeFileSync(small, await makeScanPdf({ mode: "color", encoding: "flate", links: true, outline: true, pages: 2 }));
+writeFileSync(big, await makeScanPdf({ mode: "color", encoding: "flate", pages: 6 }));
 
 const server = await preview({ preview: { port: 4317, strictPort: true }, logLevel: "warn" });
 const url = "http://localhost:4317/";
@@ -80,6 +80,19 @@ try {
   const { readFileSync, statSync } = await import("node:fs");
   const head = readFileSync(out).subarray(0, 5).toString();
   check("downloaded file is a PDF", head === "%PDF-", `${statSync(out).size} bytes, name "${dl.suggestedFilename()}"`);
+  // The browser build must encode with mozjpeg (4:2:0), not fall back to MuPDF's 4:4:4 encoder.
+  {
+    const mupdf = await import("mupdf");
+    const { jpegChroma } = await import("../src/engine/jpegEncoder.ts");
+    const doc = mupdf.Document.openDocument(readFileSync(out), "application/pdf").asPDF();
+    const layouts = [];
+    for (let i = 1; i < doc.countObjects(); i++) {
+      const r = doc.newIndirect(i);
+      if (r.isStream() && r.get("Subtype").asName?.() === "Image") layouts.push(jpegChroma(r.readRawStream().asUint8Array()));
+    }
+    doc.destroy();
+    check("browser build encodes with mozjpeg (4:2:0)", layouts.length > 0 && layouts.every((l) => l === "420"), layouts.join(","));
+  }
 
   // Offline: reload with the network cut off. App + 10 MB wasm must come from the cache.
   await ctx.setOffline(true);
