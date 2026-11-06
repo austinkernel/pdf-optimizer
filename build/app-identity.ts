@@ -16,7 +16,8 @@ export function appIdentity(): Plugin {
     transformIndexHtml(html) {
       return html
         .replaceAll("__APP_NAME__", NAME)
-        .replaceAll("__ICON_PREFIX__", ICON);
+        .replaceAll("__ICON_PREFIX__", ICON)
+        .replaceAll("__VARIANT__", IS_PREVIEW ? "preview" : "live");
     },
     generateBundle() {
       const manifest = {

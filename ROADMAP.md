@@ -9,8 +9,8 @@ single merge into `main`.
 
 | Where | What it is | Who sees it |
 |---|---|---|
-| `main` branch → **PDF Optimizer** (blue icon) | The live app | Your daily app |
-| `next` branch → **PDF Optimizer Preview** (orange icon, "PREVIEW" banner) | Work in progress, tested | Install it as a second Home Screen app to try changes before release |
+| `main` branch → **PDF Optimizer** (orange icon) | The live app | Your daily app, and the link to share |
+| `next` branch → **PDF Optimizer Preview** (blue-gray icon, striped "PREVIEW" banner) | Work in progress, tested | Install it as a second Home Screen app to try changes before release |
 
 1. A new idea is added below under **Planned**.
 2. It is built on `next`. Automatic tests run, and the preview app updates itself a few minutes later.
@@ -22,7 +22,7 @@ It never sends documents anywhere and keeps no documents, same as the live app.
 
 ## Working on (in `next`)
 
-- [ ] **Updates moved into a collapsed "App info & updates" section**, like Privacy. No popup. A small dot and "Update ready" label next to the section title when a new version has downloaded.
+Nothing yet. New ideas start here.
 
 ## Planned
 
@@ -33,6 +33,8 @@ It never sends documents anywhere and keeps no documents, same as the live app.
 - [ ] **Colour spaces and masks** now left unchanged (CMYK, Indexed, images with transparency): handle where it is safe.
 - [ ] **Per-page SSIM report** and page-by-page comparison in the results.
 - [ ] **Multiple PDFs at once** (batch).
+- [ ] **Android: open PDFs from the share sheet** ("Share → PDF Optimizer"). Android supports this for installed web apps; iPhone does not.
+- [ ] **Custom app icon**, if you supply one (see README, "Using your own icon").
 
 ## Ideas, not committed
 
@@ -45,7 +47,8 @@ It never sends documents anywhere and keeps no documents, same as the live app.
 
 ## Done
 
-- **0.3.0**: reliable update checks, update popup (being replaced), Export diagnostics.
+- **0.4.0**: Android-ready wording and install help; orange theme; updates in a collapsed "App info & updates" section with an "Update ready" badge (no popup); preview app (blue-gray) and roadmap.
+- **0.3.0**: reliable update checks, update popup (since replaced), Export diagnostics.
 - **0.2.1**: Save to Files fix, mozjpeg 4:2:0 encoder, photo-sized page handling, fresh engine per job.
 - **0.2.0**: working offline PWA: analysis, four profiles, in-place compression, verification, Save/Share.
 - **0.1.0**: feasibility research.

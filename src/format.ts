@@ -1,4 +1,4 @@
-/** Decimal units, matching how iOS Files reports sizes. */
+/** Decimal units, matching how the iOS Files and Android Files apps report sizes. */
 export function formatBytes(n: number): string {
   if (n < 1000) return `${n} B`;
   if (n < 1e6) return `${(n / 1e3).toFixed(n < 1e4 ? 1 : 0)} KB`;

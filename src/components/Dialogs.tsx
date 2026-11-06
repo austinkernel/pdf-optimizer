@@ -37,28 +37,6 @@ export function Modal({ title, onClose, children, labelledBy }: { title: string;
   );
 }
 
-export function UpdateDialog({ onUpdate, onLater }: { onUpdate: () => void; onLater: () => void }) {
-  return (
-    <Modal title="Update available" onClose={onLater} labelledBy="update-title">
-      <div className="modal-icon" aria-hidden="true">
-        ⬆︎
-      </div>
-      <p className="modal-text">
-        A new version of PDF Optimizer has been downloaded and is ready to use. Updating reloads the app. Your files are
-        not affected.
-      </p>
-      <div className="actions">
-        <button type="button" className="btn btn-primary btn-large" onClick={onUpdate}>
-          Update now
-        </button>
-        <button type="button" className="btn btn-plain" onClick={onLater}>
-          Later
-        </button>
-      </div>
-    </Modal>
-  );
-}
-
 export function DiagnosticsDialog({ text, onClose }: { text: string; onClose: () => void }) {
   const [status, setStatus] = useState<string | null>(null);
   const fileName = `pdf-optimizer-diagnostics-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.txt`;

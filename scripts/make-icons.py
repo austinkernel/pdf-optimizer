@@ -6,25 +6,26 @@ def icon(size, maskable=False, preview=False):
     S = size * 4  # supersample
     im = Image.new("RGB", (S, S), (10, 102, 214))
     d = ImageDraw.Draw(im)
-    for y in range(S):  # vertical gradient (blue for the app, orange for the preview build)
+    for y in range(S):  # vertical gradient (orange for the app, blue-gray for the preview build)
         t = y / S
-        c = (int(255 - 20 * t), int(160 - 50 * t), int(40 - 20 * t)) if preview else (int(30 - 20 * t), int(130 - 40 * t), int(240 - 30 * t))
+        # live: orange gradient; preview: flat, muted blue-gray (deliberately plain)
+        c = (160, 174, 192) if preview else (int(249 - 55 * t), int(115 - 50 * t), int(22 - 10 * t))
         d.line([(0, y), (S, y)], fill=c)
     pad = S * (0.26 if maskable else 0.2)
     w = S - 2 * pad
     x0, y0, x1, y1 = pad + w * 0.12, pad, pad + w * 0.88, S - pad
     fold = w * 0.22
     d.polygon([(x0, y0), (x1 - fold, y0), (x1, y0 + fold), (x1, y1), (x0, y1)], fill=(255, 255, 255))
-    d.polygon([(x1 - fold, y0), (x1 - fold, y0 + fold), (x1, y0 + fold)], fill=(200, 220, 245))
+    d.polygon([(x1 - fold, y0), (x1 - fold, y0 + fold), (x1, y0 + fold)], fill=(205, 212, 222) if preview else (255, 214, 186))
     cx = (x0 + x1) / 2
     lw = S * 0.035
     for k in range(3):  # text lines
         yy = y0 + w * (0.30 + 0.12 * k)
-        d.rounded_rectangle([x0 + w * 0.12, yy, x1 - w * 0.12, yy + lw], radius=lw / 2, fill=(170, 190, 215))
+        d.rounded_rectangle([x0 + w * 0.12, yy, x1 - w * 0.12, yy + lw], radius=lw / 2, fill=(176, 186, 199) if preview else (236, 196, 168))
     # compress arrows (pointing inward)
     a = w * 0.13
     for sgn, base in ((1, y0 + w * 0.70), (-1, y1 - w * 0.06)):
-        d.polygon([(cx - a, base), (cx + a, base), (cx, base + sgn * a)], fill=(215, 105, 15) if preview else (10, 102, 214))
+        d.polygon([(cx - a, base), (cx + a, base), (cx, base + sgn * a)], fill=(91, 107, 125) if preview else (194, 65, 12))
     if preview:  # diagonal "PREVIEW" band so it cannot be mistaken for the real app
         band = Image.new("RGBA", (S, S), (0, 0, 0, 0))
         bd = ImageDraw.Draw(band)
