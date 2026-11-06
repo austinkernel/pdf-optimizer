@@ -1,3 +1,4 @@
+import { Disclosure } from "./Disclosure";
 import type { AnalysisReport, ImageInfo } from "../engine/types";
 import { formatBytes, paperName, percent } from "../format";
 
@@ -79,7 +80,8 @@ export function AnalysisView({ report: r, fileName }: { report: AnalysisReport; 
         <Row label="PDF version" value={r.pdfVersion} />
       </div>
 
-      <h2 className="section-title">Images</h2>
+      <div className="disclosures">
+      <Disclosure title="Images" summary={r.images.length ? `${r.images.length} · ${im.classes}` : "none"}>
       <div className="group">
         <Row label="Embedded images" value={r.images.length} />
         {r.images.length > 0 && (
@@ -102,7 +104,9 @@ export function AnalysisView({ report: r, fileName }: { report: AnalysisReport; 
         )}
       </div>
 
-      <h2 className="section-title">Text &amp; features</h2>
+      </Disclosure>
+
+      <Disclosure title="Text & features" summary={r.totalTextChars > 0 ? "searchable" : "image only"}>
       <div className="group">
         <Row
           label="Searchable text"
@@ -124,6 +128,8 @@ export function AnalysisView({ report: r, fileName }: { report: AnalysisReport; 
         "est." values are estimated from how images are drawn and encoded. Everything else is read directly from the
         file. All of the features above are kept unchanged by compression and checked afterwards.
       </p>
+      </Disclosure>
+      </div>
 
       {r.warnings.length > 0 && (
         <div className="notice notice-warn" role="note">

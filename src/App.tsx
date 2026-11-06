@@ -21,7 +21,7 @@ type Stage =
   | { kind: "done"; file: File; report: AnalysisReport; result: OptimizeResult; blob: Blob; pageRequests: number }
   | { kind: "error"; message: string; file?: File; report?: AnalysisReport };
 
-const VERSION = "0.4.0";
+const VERSION = "0.4.1";
 const IS_PREVIEW = import.meta.env.VITE_PREVIEW === "1";
 const SOURCE_URL = "https://github.com/austinkernel/pdf-optimizer";
 const PROFILE_KEY = "pdfopt.profile";
@@ -250,12 +250,8 @@ export default function App() {
             pageRequests={stage.pageRequests}
             onAnotherProfile={() => setStage({ kind: "ready", file: stage.file, report: stage.report })}
             onNewFile={pickFile}
+            onDiagnostics={() => showDiagnostics(stage.report, stage.result)}
           />
-        )}
-        {stage.kind === "done" && (
-          <button type="button" className="btn btn-plain diag-btn" onClick={() => showDiagnostics(stage.report, stage.result)}>
-            Export diagnostics
-          </button>
         )}
 
         {stage.kind === "error" && (

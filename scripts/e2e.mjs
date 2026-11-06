@@ -103,11 +103,18 @@ try {
 
   await compressFile(small, { shotPrefix: "2" });
   const hero = await page.locator(".hero-number").innerText();
-  const statuses = await page.locator(".check-row .status").allInnerTexts();
+  const statuses = (await page.locator(".check-row .status").allTextContents()).map((t) => t.trim());
+  check("verification collapsed by default, summary pill shown", (await page.locator(".check-pill.ok").isVisible()) && !(await page.locator(".check-row").first().isVisible()));
+  {
+    // Save is reachable without scrolling on a phone screen.
+    const box = await page.getByRole("button", { name: /Save to Files|Download/ }).first().boundingBox();
+    const vh = page.viewportSize().height;
+    check("save button visible on first screen", !!box && box.y + box.height <= vh, `button bottom ${box ? Math.round(box.y + box.height) : "?"} / viewport ${vh}`);
+  }
   check("compression reports a real reduction", /^−\d/.test(hero), hero);
   check("all verification checks pass in the browser", statuses.length > 5 && statuses.every((s) => s === "✓"), `${statuses.length} checks`);
   check("no network requests during processing", requestsDuringJob.length === 0, requestsDuringJob.join(", "));
-  const foot = await page.locator("p.footnote", { hasText: "Network requests during processing" }).innerText();
+  const foot = await page.locator("p.footnote", { hasText: "Network requests during processing" }).textContent();
   check("in-app network counters read 0/0", /0 from the app page,\s*0 from the engine/.test(foot), foot.replace(/\s+/g, " "));
 
   // Download produces a valid PDF of the reported size.
@@ -133,6 +140,7 @@ try {
 
   // Diagnostics: preview dialog with a structure-only report (no file name).
   {
+    await page.locator("details.disclosure summary", { hasText: "More" }).click();
     await page.getByRole("button", { name: "Export diagnostics" }).click();
     const pre = page.locator(".diag-pre");
     await pre.waitFor();

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.1: cleaner results screen
+### Changed
+- **Results screen reorganised.** The result, a "✓ Verified: all N checks
+  passed" pill, the file name and the Save button come first and fit on the
+  first screen. Verification (opens by itself if a check fails), Details
+  (sizes, settings, per-image decisions) and More (Download, Export
+  diagnostics, network counters) are collapsible. "Try another profile" and
+  "New PDF" sit side by side.
+- Download is the main button only where the browser cannot share files.
+  Elsewhere it is "Download instead" under More.
+- Analysis screen: Images and Text & features are collapsible, with
+  one-line summaries.
+- Shorter "already well compressed" message.
+### Tests
+- e2e (26/26 on iPhone and Pixel 7 profiles): verification collapsed by
+  default with the pill shown; Save button within the first screen.
+
 ## 0.4.0: Android, orange theme, quieter updates, preview app
 ### Added
 - A preview app (orange icon, "PREVIEW" banner) served under `/preview/`,

@@ -31,6 +31,7 @@ Nothing yet. New ideas start here.
 
 ## Done
 
+- **0.4.1**: cleaner results screen (save first, verification and details tap-to-open); collapsible analysis sections.
 - **0.4.0**: Android-ready wording and install help; orange theme; updates in a collapsed "App info & updates" section with an "Update ready" badge (no popup); preview app (blue-gray) and roadmap.
 - **0.3.0**: reliable update checks, update popup (since replaced), Export diagnostics.
 - **0.2.1**: Save to Files fix, mozjpeg 4:2:0 encoder, photo-sized page handling, fresh engine per job.
