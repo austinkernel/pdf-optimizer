@@ -6,7 +6,7 @@ on the `next` branch and tried in the preview app before release (see
 
 ## Working on (in `next`)
 
-Nothing yet. New ideas start here.
+- [x] **Cleaner results screen**: result, a "Verified" pill, file name and **Save** together at the top (no scrolling). Verification, Details and More (Download, Export diagnostics) are tap-to-open rows. Download shows only under More where the share sheet works; it is the main button where it doesn't. On the analysis screen, Images and Text & features are tap-to-open too.
 
 ## Planned
 

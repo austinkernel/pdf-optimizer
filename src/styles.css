@@ -217,3 +217,32 @@ button { font: inherit; }
 .update-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--accent); }
 
 .install-hint { margin-top: 4px; }
+
+/* Results: compact hero, save first, optional details collapsed */
+.hero-meta { margin-top: 6px; font-size: 14px; color: var(--text-2); }
+.check-pill {
+  display: inline-block; margin-top: 10px; padding: 5px 12px; border-radius: 14px; font-size: 14px; font-weight: 600;
+}
+.check-pill.ok { background: color-mix(in srgb, var(--green) 16%, transparent); color: var(--green); }
+.check-pill.bad { background: color-mix(in srgb, var(--red) 16%, transparent); color: var(--red); }
+.save-group { margin-top: 18px; }
+.actions.tight { margin-top: 12px; gap: 10px; }
+.button-row { display: flex; gap: 10px; }
+.button-row .btn { flex: 1; font-size: 16px; min-height: 46px; padding: 10px 8px; }
+
+.disclosures { display: flex; flex-direction: column; gap: 10px; margin-top: 22px; }
+.disclosure { background: var(--card); border-radius: var(--radius); overflow: hidden; }
+.disclosure > summary {
+  display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 12px 16px;
+  list-style: none; cursor: pointer;
+}
+.disclosure > summary::-webkit-details-marker { display: none; }
+.disclosure > summary::after { content: "›"; color: var(--text-2); font-size: 20px; transition: transform 0.15s; }
+.disclosure[open] > summary::after { transform: rotate(90deg); }
+.disclosure-title { flex: 1; font-weight: 500; }
+.disclosure-summary { color: var(--text-2); font-size: 15px; text-align: right; }
+.disclosure-summary.ok { color: var(--green); }
+.disclosure-summary.bad { color: var(--red); font-weight: 600; }
+.disclosure-body { padding: 0 0 12px; }
+.disclosure-body .group { border-radius: 0; border-top: 0.5px solid var(--sep); }
+.disclosure-body .actions, .disclosure-body .footnote { padding: 0 16px; margin-left: 0; margin-right: 0; }

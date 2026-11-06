@@ -250,12 +250,8 @@ export default function App() {
             pageRequests={stage.pageRequests}
             onAnotherProfile={() => setStage({ kind: "ready", file: stage.file, report: stage.report })}
             onNewFile={pickFile}
+            onDiagnostics={() => showDiagnostics(stage.report, stage.result)}
           />
-        )}
-        {stage.kind === "done" && (
-          <button type="button" className="btn btn-plain diag-btn" onClick={() => showDiagnostics(stage.report, stage.result)}>
-            Export diagnostics
-          </button>
         )}
 
         {stage.kind === "error" && (
