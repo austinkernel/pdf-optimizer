@@ -120,7 +120,7 @@ Two bugs were found and fixed through testing:
 
 ## Known limitations
 
-See the README "Known limitations" list.
+See [DEVELOPMENT.md](DEVELOPMENT.md#known-limitations).
 
 ## Addendum (0.2.1): first on-device test and encoder change
 

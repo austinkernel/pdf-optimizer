@@ -1,24 +1,8 @@
 # Roadmap
 
-What's being worked on, what's planned, and what's done. Ideas get added here
-as they come up. They are built and tested in batches on the `next` branch,
-tried on the phone through the **preview app**, and released together in a
-single merge into `main`.
-
-## How releases work
-
-| Where | What it is | Who sees it |
-|---|---|---|
-| `main` branch → **PDF Optimizer** (orange icon) | The live app | Your daily app, and the link to share |
-| `next` branch → **PDF Optimizer Preview** (blue-gray icon, striped "PREVIEW" banner) | Work in progress, tested | Install it as a second Home Screen app to try changes before release |
-
-1. A new idea is added below under **Planned**.
-2. It is built on `next`. Automatic tests run, and the preview app updates itself a few minutes later.
-3. Try it in the preview app. Say what to change.
-4. When the batch is good, `next` is merged into `main` in one pull request. The live app updates, and `next` restarts from `main`.
-
-The preview app opens at `https://austinkernel.github.io/pdf-optimizer/preview/`.
-It never sends documents anywhere and keeps no documents, same as the live app.
+What's being worked on, what's planned, and what's done. New work is built
+on the `next` branch and tried in the preview app before release (see
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#releases-and-the-preview-app)).
 
 ## Working on (in `next`)
 
@@ -34,7 +18,7 @@ Nothing yet. New ideas start here.
 - [ ] **Per-page SSIM report** and page-by-page comparison in the results.
 - [ ] **Multiple PDFs at once** (batch).
 - [ ] **Android: open PDFs from the share sheet** ("Share → PDF Optimizer"). Android supports this for installed web apps; iPhone does not.
-- [ ] **Custom app icon**, if you supply one (see README, "Using your own icon").
+- [ ] **Custom app icon** (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#app-icon)).
 
 ## Ideas, not committed
 
@@ -55,4 +39,4 @@ Nothing yet. New ideas start here.
 
 ## Known limitations
 
-See the README.
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#known-limitations).
