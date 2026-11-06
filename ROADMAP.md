@@ -6,11 +6,7 @@ on the `next` branch and tried in the preview app before release (see
 
 ## Working on (in `next`)
 
-- [x] **Sample preview**: one page (the most image-heavy by default) compressed with the chosen profile and shown next to the original: side by side, original only or compressed only, zoom Fit/2×/4× with both sides scrolling together, profile chips to switch on the spot, previous/next page, and the measured size of that page's images.
-- [x] **Password-protected PDFs**: password prompt, clear message for a wrong password; the compressed copy keeps the same password by default, with a switch to save it without one. The password stays in memory for that file only.
-- [x] **Android: open PDFs from the share sheet** ("Share → PDF Optimizer" once installed). The file is handed over on-device and deleted as soon as the app reads it.
-- [x] **Export diagnostics** moved to App info & updates → Troubleshooting.
-- [x] Fix: the live app and the preview no longer delete each other's offline copy.
+Nothing yet. New ideas start here.
 
 ## Planned
 
@@ -32,6 +28,7 @@ on the `next` branch and tried in the preview app before release (see
 
 ## Done
 
+- **0.5.0**: sample page preview (side by side, zoom, live profile switching); password-protected PDFs (password kept by default); Android share-to-app; diagnostics moved to Troubleshooting; live/preview offline caches no longer clash.
 - **0.4.1**: cleaner results screen (save first, verification and details tap-to-open); collapsible analysis sections.
 - **0.4.0**: Android-ready wording and install help; orange theme; updates in a collapsed "App info & updates" section with an "Update ready" badge (no popup); preview app (blue-gray) and roadmap.
 - **0.3.0**: reliable update checks, update popup (since replaced), Export diagnostics.

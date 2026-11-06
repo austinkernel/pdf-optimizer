@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0: sample preview, passwords, Android share
 ### Added
 - **Sample preview** ("Preview a sample page"): compresses one page on a
   one-page copy and shows it next to the original. Side by side / original /
