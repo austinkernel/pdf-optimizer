@@ -6,7 +6,7 @@ on the `next` branch and tried in the preview app before release (see
 
 ## Working on (in `next`)
 
-- [x] **Cleaner results screen**: result, a "Verified" pill, file name and **Save** together at the top (no scrolling). Verification, Details and More (Download, Export diagnostics) are tap-to-open rows. Download shows only under More where the share sheet works; it is the main button where it doesn't. On the analysis screen, Images and Text & features are tap-to-open too.
+Nothing yet. New ideas start here.
 
 ## Planned
 
@@ -31,6 +31,7 @@ on the `next` branch and tried in the preview app before release (see
 
 ## Done
 
+- **0.4.1**: cleaner results screen (save first, verification and details tap-to-open); collapsible analysis sections.
 - **0.4.0**: Android-ready wording and install help; orange theme; updates in a collapsed "App info & updates" section with an "Update ready" badge (no popup); preview app (blue-gray) and roadmap.
 - **0.3.0**: reliable update checks, update popup (since replaced), Export diagnostics.
 - **0.2.1**: Save to Files fix, mozjpeg 4:2:0 encoder, photo-sized page handling, fresh engine per job.

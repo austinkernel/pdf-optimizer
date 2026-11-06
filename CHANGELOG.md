@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.1: cleaner results screen
 ### Changed
 - **Results screen reorganised.** The result, a "✓ Verified: all N checks
   passed" pill, the file name and the Save button come first and fit on the
