@@ -29,11 +29,18 @@ function listPublic(dir: string, root = dir): string[] {
 
 const SW_SOURCE = (version: string, assets: string[]) => `/* generated: do not edit */
 const VERSION = ${JSON.stringify(version)};
-const CACHE = "pdf-optimizer-" + VERSION;
 const ASSETS = ${JSON.stringify(assets)};
-// The preview app (served under ./preview/) has its own service worker and scope.
-// This worker must not answer its requests, or the preview would show this app.
-const PREVIEW_PREFIX = new URL("./preview/", self.registration.scope).pathname;
+// The live app (/pdf-optimizer/) and the preview app (/pdf-optimizer/preview/) share one origin,
+// and therefore one Cache Storage. Every cache name carries this worker's scope, so each app only
+// ever creates or deletes its own caches.
+const SCOPE = new URL(self.registration.scope).pathname;
+const PREFIX = "pdfopt:" + SCOPE + ":";
+const CACHE = PREFIX + VERSION;
+// A PDF shared from another app (Android share sheet) waits here until the page picks it up.
+const SHARE_CACHE = "pdfopt-share:" + SCOPE;
+const SHARE_KEY = new URL("shared-file", self.registration.scope).href;
+// The preview app has its own service worker and scope. This worker must not answer its requests.
+const PREVIEW_PREFIX = SCOPE + "preview/";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map((a) => new Request(a, { cache: "reload" })))));
@@ -42,7 +49,10 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith("pdf-optimizer-") && k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys
+        // own outdated versions, plus caches from before names were scoped ("pdf-optimizer-<hash>")
+        .filter((k) => (k.startsWith(PREFIX) && k !== CACHE) || /^pdf-optimizer-[0-9a-f]+$/.test(k))
+        .map((k) => caches.delete(k))))
       .then(() => self.clients.claim()),
   );
 });
@@ -50,24 +60,53 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data === "skip-waiting") self.skipWaiting();
   if (event.data === "status") {
-    caches.open(CACHE).then((c) => c.keys()).then((keys) => {
-      if (event.source) event.source.postMessage({ type: "sw-status", version: VERSION, cached: keys.length, total: ASSETS.length });
-    });
+    caches.has(CACHE)
+      .then((has) => (has ? caches.open(CACHE).then((c) => c.keys()) : []))
+      .then((keys) => {
+        if (event.source) event.source.postMessage({ type: "sw-status", version: VERSION, cached: keys.length, total: ASSETS.length });
+      });
   }
 });
 
+/** Android "Share -> PDF Optimizer": keep the shared PDF on this device and open the app with it. */
+async function receiveShare(request) {
+  try {
+    const form = await request.formData();
+    const file = form.getAll("pdf").find((f) => f && typeof f === "object" && "arrayBuffer" in f);
+    if (!file) return Response.redirect("./?shared=none", 303);
+    const cache = await caches.open(SHARE_CACHE);
+    await cache.put(SHARE_KEY, new Response(file, {
+      headers: { "content-type": file.type || "application/pdf", "x-file-name": encodeURIComponent(file.name || "shared.pdf") },
+    }));
+    return Response.redirect("./?shared=1", 303);
+  } catch {
+    return Response.redirect("./?shared=error", 303);
+  }
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
-  if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // never touch other origins
   if (url.pathname.startsWith(PREVIEW_PREFIX)) return;
-  event.respondWith(
-    caches.open(CACHE).then(async (cache) => {
-      if (req.mode === "navigate") return (await cache.match("./index.html", { ignoreVary: true })) || fetch(req);
-      return (await cache.match(req, { ignoreSearch: true, ignoreVary: true })) || fetch(req);
-    }),
-  );
+  if (req.method === "POST" && url.pathname === SCOPE + "share-target") {
+    event.respondWith(receiveShare(req));
+    return;
+  }
+  if (req.method !== "GET") return;
+  event.respondWith((async () => {
+    const cache = (await caches.has(CACHE)) ? await caches.open(CACHE) : null;
+    if (cache) {
+      if (req.mode === "navigate") {
+        const page = await cache.match("./index.html", { ignoreVary: true });
+        if (page) return page;
+      } else {
+        const hit = await cache.match(req, { ignoreSearch: true, ignoreVary: true });
+        if (hit) return hit;
+      }
+    }
+    return fetch(req);
+  })());
 });
 `;
 

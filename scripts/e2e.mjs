@@ -28,6 +28,9 @@ const LOCK_PW = "open sesame";
 }
 
 const server = await preview({ preview: { port: 4317, strictPort: true }, logLevel: "warn" });
+// Every request that actually reaches the web server (as opposed to being answered on-device).
+const serverHits = [];
+server.httpServer.on("request", (req) => serverHits.push(`${req.method} ${req.url}`));
 const url = "http://localhost:4317/";
 const browser = await chromium.launch();
 // E2E_DEVICE picks the phone profile, e.g. "Pixel 7" for Android (Chromium = Chrome's engine).
@@ -220,6 +223,32 @@ try {
     check("password: downloaded copy needs the same password", needs && opens);
   }
 
+  // Android share sheet → PDF Optimizer: the OS POSTs the PDF to ./share-target, the service
+  // worker keeps it on-device and opens ./?shared=1. Simulated here with the same request.
+  {
+    const mupdf = await import("mupdf");
+    const tiny = await makeScanPdf({ mode: "gray", encoding: "jpeg", pages: 1, dpi: 100 });
+    await page.goto(url);
+    await page.evaluate(() => navigator.serviceWorker.ready);
+    const sharedUrl = await page.evaluate(async (bytes) => {
+      const fd = new FormData();
+      fd.append("pdf", new File([new Uint8Array(bytes)], "from-share-sheet.pdf", { type: "application/pdf" }));
+      const r = await fetch("./share-target", { method: "POST", body: fd, redirect: "manual" });
+      const stored = await (await caches.open("pdfopt-share:/")).match(new URL("./shared-file", location.href).href);
+      return `${r.type} stored=${!!stored}`;
+    }, Array.from(tiny));
+    check("share: service worker keeps the shared PDF on-device and redirects", sharedUrl === "opaqueredirect stored=true", sharedUrl);
+    await page.goto(url + "?shared=1");
+    await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
+    const docName = await page.locator(".row", { hasText: "File" }).first().innerText();
+    check("share: app opens straight into analysis of the shared file", docName.includes("from-share-sheet.pdf"), docName.replace(/\s+/g, " "));
+    check("share: address cleaned up", !page.url().includes("shared="), page.url());
+    const leftover = await page.evaluate(async () => (await caches.keys()).filter((k) => k.startsWith("pdfopt-share")));
+    check("share: shared file deleted from device storage after pickup", leftover.length === 0, leftover.join(", "));
+    check("share: the PDF never reached the server", !serverHits.some((h) => h.startsWith("POST")), serverHits.filter((h) => h.startsWith("POST")).join(", "));
+    void mupdf;
+  }
+
   // Simulated new deploy: change sw.js on the server. The app must detect it on the next check
   // and show a small "Update ready" badge on the collapsed section (no popup), then install it.
   {
@@ -289,7 +318,11 @@ try {
   check("no uncaught page errors", errors.length === 0, errors.join(" | "));
   // Whole session: only GETs of the app's own files. No uploads, no other origins.
   // blob: URLs are in-memory objects (rendered sample pages, downloads), not network traffic.
-  const bad = allRequests.filter((r) => !r.url.startsWith("blob:") && (r.method !== "GET" || r.hasBody || !r.url.startsWith(url)));
+  // The simulated share-sheet POST is answered by the service worker on-device (checked above
+  // against the server's own request log), so it is excluded here.
+  const bad = allRequests.filter(
+    (r) => !r.url.startsWith("blob:") && !r.url.endsWith("/share-target") && (r.method !== "GET" || r.hasBody || !r.url.startsWith(url)),
+  );
   check("entire session: only same-origin GETs, no request bodies", bad.length === 0, `${allRequests.length} requests; ${bad.map((b) => `${b.method} ${b.url}`).join(", ")}`);
 } catch (e) {
   check("e2e run completed", false, String(e));

@@ -6,18 +6,19 @@ on the `next` branch and tried in the preview app before release (see
 
 ## Working on (in `next`)
 
-Nothing yet. New ideas start here.
+- [x] **Sample preview**: one page (the most image-heavy by default) compressed with the chosen profile and shown next to the original: side by side, original only or compressed only, zoom Fit/2×/4× with both sides scrolling together, profile chips to switch on the spot, previous/next page, and the measured size of that page's images.
+- [x] **Password-protected PDFs**: password prompt, clear message for a wrong password; the compressed copy keeps the same password by default, with a switch to save it without one. The password stays in memory for that file only.
+- [x] **Android: open PDFs from the share sheet** ("Share → PDF Optimizer" once installed). The file is handed over on-device and deleted as soon as the app reads it.
+- [x] **Export diagnostics** moved to App info & updates → Troubleshooting.
+- [x] Fix: the live app and the preview no longer delete each other's offline copy.
 
 ## Planned
 
-- [ ] **Sample preview**: compress one page first, then compare before and after side by side, with zoom, before running the whole file.
 - [ ] **Custom settings**: JPEG quality, maximum DPI, grayscale and black-and-white options, with sensible defaults.
 - [ ] **Smaller black-and-white scans** (CCITT Group 4). Needs a custom MuPDF build.
-- [ ] **Password-protected PDFs**: ask for the password and process the file.
 - [ ] **Colour spaces and masks** now left unchanged (CMYK, Indexed, images with transparency): handle where it is safe.
 - [ ] **Per-page SSIM report** and page-by-page comparison in the results.
 - [ ] **Multiple PDFs at once** (batch).
-- [ ] **Android: open PDFs from the share sheet** ("Share → PDF Optimizer"). Android supports this for installed web apps; iPhone does not.
 - [ ] **Custom app icon** (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#app-icon)).
 
 ## Ideas, not committed

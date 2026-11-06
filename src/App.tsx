@@ -13,6 +13,7 @@ import { DiagnosticsDialog } from "./components/Dialogs";
 import { SampleViewer } from "./components/SampleViewer";
 import { PasswordView } from "./components/PasswordView";
 import { promptInstall, subscribeInstall, type InstallState } from "./install";
+import { takeSharedFile } from "./share";
 import { buildDiagnostics } from "./diagnostics";
 
 type Stage =
@@ -152,6 +153,14 @@ export default function App() {
     },
     [analyzeFile],
   );
+
+  // A PDF shared from another app (Android) opens straight into analysis.
+  useEffect(() => {
+    void takeSharedFile().then((r) => {
+      if (r.kind === "file") void onFile(r.file);
+      else if (r.kind === "error") setStage({ kind: "error", message: r.message });
+    });
+  }, [onFile]);
 
   const compress = async (file: File, report: AnalysisReport) => {
     if (engine.current!.busy) return; // duplicate-tap guard

@@ -29,7 +29,14 @@ Background and measurements:
   and worker), and the e2e test asserts zero.
 - No analytics, tracking, accounts or cookies. Only the chosen profile is
   remembered (`localStorage`).
-- **Export diagnostics** (analysis and results screens) produces a
+- Passwords for protected PDFs live only in memory for the current file. By
+  default the output keeps the original encryption and password; the
+  "Keep the password" switch off saves it with MuPDF's `decrypt`.
+- A PDF shared from another app (Android share target) is stored briefly
+  in the app's own Cache Storage by the service worker, read once by the
+  page, and deleted immediately. The e2e test checks it never reaches the
+  server.
+- **Export diagnostics** (App info & updates → Troubleshooting) produces a
   structure-only text report, with no file name, text, metadata values,
   links or image content. It is shown in full before sharing.
 
@@ -49,6 +56,7 @@ src/
   components/        screens: analysis, profile picker, processing, results, dialogs
   pwa.ts             service-worker registration, update checks, offline status
   install.ts         install help (Android install prompt, iPhone instructions)
+  share.ts           picks up a PDF shared from another app (Android share target)
   diagnostics.ts     structure-only diagnostics report
 build/precache-sw.ts build-time generated precache service worker (no runtime caching)
 build/app-identity.ts live vs preview app name, icons, colours and manifest
@@ -96,7 +104,10 @@ Source: **GitHub Actions**.
    live app updates, and `next` is moved up to `main`.
 
 The preview has its own name, icons, colours, manifest and service-worker
-scope. The live app's service worker ignores `/preview/` requests.
+scope. The live app's service worker ignores `/preview/` requests. Both
+apps share one origin's Cache Storage, so every cache name includes the
+worker's scope (`pdfopt:/pdf-optimizer/:<version>`), and each app only
+deletes its own caches.
 
 ## App icon
 
@@ -122,8 +133,10 @@ middle ~80% (Android may crop to a circle). All sizes are generated from it:
   background, so processing needs the app in the foreground. iOS usually
   *resumes* Home Screen apps instead of relaunching them, so update checks
   run on launch, on return to the foreground and every 30 minutes.
-- **Android:** Chrome, Edge, Samsung Internet. Tested in Chromium with a
-  Pixel 7 profile, not yet on a physical phone.
+- **Android:** Chrome, Edge, Samsung Internet. Installed apps appear in the
+  share sheet for PDFs (`share_target` in the manifest, handled by the
+  service worker). Tested in Chromium with a Pixel 7 profile, not yet on a
+  physical phone.
 
 ## Known limitations
 
@@ -131,6 +144,6 @@ middle ~80% (Android may crop to a circle). All sizes are generated from it:
   MuPDF build.
 - CMYK, Indexed, Lab and Separation images, and images with transparency
   masks, are kept as-is.
-- Password-protected PDFs (open password) aren't supported yet.
-- No page-by-page visual comparison or sample preview yet.
+- The sample preview covers one page at a time; there is no whole-document
+  visual comparison yet.
 - Very large documents are limited by the browser's memory for web apps.
