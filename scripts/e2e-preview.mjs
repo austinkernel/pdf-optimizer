@@ -50,9 +50,21 @@ try {
   check("preview works offline and is still the preview", (await page.title()) === "PDF Optimizer Preview");
   await ctx.setOffline(false);
 
-  // 4. The live app is unaffected.
+  // 4. The live app is unaffected, also offline: installing the preview must not delete
+  //    the live app's offline copy (both apps share one origin's cache storage).
   await page.goto(base + "/");
   check("live app still the live app", (await page.title()) === "PDF Optimizer" && (await page.locator(".preview-banner").count()) === 0);
+  const cacheSizes = await page.evaluate(async () => {
+    const out = {};
+    for (const k of await caches.keys()) out[k] = (await (await caches.open(k)).keys()).length;
+    return out;
+  });
+  const filled = Object.values(cacheSizes).filter((n) => n > 5).length;
+  check("each app keeps its own filled offline cache", filled >= 2, JSON.stringify(cacheSizes));
+  await ctx.setOffline(true);
+  const offlineOk = await page.reload().then(async () => (await page.title()) === "PDF Optimizer").catch(() => false);
+  check("live app still works offline after the preview installed", offlineOk);
+  await ctx.setOffline(false);
 } catch (e) {
   check("run completed", false, String(e).slice(0, 300));
 } finally {

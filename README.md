@@ -29,10 +29,18 @@ Open it once while you're online so it can save itself for offline use.
    - **High Quality**: smaller, looks identical.
    - **Balanced** (recommended): much smaller, no visible difference.
    - **Compact**: smallest; text stays readable.
+   - Not sure? Tap **Preview a sample page** to compare one page before and
+     after, side by side and zoomed in.
 3. Tap **Compress**. Keep the app open until it finishes.
 4. Check the result, then tap **Save to Files / Share**.
 
 Your original file is never changed. The compressed copy is a new file.
+
+**Password-protected PDFs:** you'll be asked for the password. The
+compressed copy keeps the same password unless you switch that off.
+
+**Android:** once installed, you can also share a PDF from another app
+straight to PDF Optimizer.
 
 ## Privacy
 
@@ -48,7 +56,7 @@ tap **Install update now**.
 ## Good to know
 
 - Searchable text, links and bookmarks in your PDF are kept.
-- Black-and-white scans and password-protected PDFs aren't shrunk yet.
+- Black-and-white scans aren't shrunk yet.
 - Very large files can hit the phone's memory limit for web apps.
 
 ---

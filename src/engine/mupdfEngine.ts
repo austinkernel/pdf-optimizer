@@ -23,6 +23,7 @@ import type {
   OptimizeResult,
   PageInfo,
   ProgressEvent,
+  SampleResult,
   VerificationCheck,
 } from "./types";
 
@@ -32,7 +33,7 @@ type Progress = (e: ProgressEvent) => void;
 type OutlineItem = NonNullable<ReturnType<mupdf.Document["loadOutline"]>>[number];
 
 export class EngineError extends Error {
-  code: "password" | "not-pdf" | "damaged" | "internal";
+  code: "password" | "wrong-password" | "not-pdf" | "damaged" | "internal";
   constructor(code: EngineError["code"], message: string) {
     super(message);
     this.code = code;
@@ -43,7 +44,11 @@ const TINY_IMAGE_BYTES = 8 * 1024;
 
 // ---------------------------------------------------------------- helpers
 
-function openPdf(bytes: Uint8Array): PDFDocument {
+/**
+ * Opens a PDF. Password-protected files need `password` (kept in memory for
+ * this call only; never stored or logged).
+ */
+function openPdf(bytes: Uint8Array, password?: string): PDFDocument {
   let doc: mupdf.Document;
   try {
     doc = mupdf.Document.openDocument(bytes, "application/pdf");
@@ -56,8 +61,14 @@ function openPdf(bytes: Uint8Array): PDFDocument {
     throw new EngineError("not-pdf", "This file is not a PDF.");
   }
   if (pdf.needsPassword()) {
-    pdf.destroy();
-    throw new EngineError("password", "This PDF is password-protected. Password support is not available yet.");
+    if (!password) {
+      pdf.destroy();
+      throw new EngineError("password", "This PDF is password-protected.");
+    }
+    if (pdf.authenticatePassword(password) === 0) {
+      pdf.destroy();
+      throw new EngineError("wrong-password", "That password is not correct.");
+    }
   }
   return pdf;
 }
@@ -250,7 +261,7 @@ function readXmp(doc: PDFDocument): string | null {
   }
 }
 
-function features(doc: PDFDocument): FeatureInfo {
+function features(doc: PDFDocument, unlockedWithPassword = false): FeatureInfo {
   const trailer = doc.getTrailer();
   const root = trailer.get("Root");
   const annotations: Record<string, number> = {};
@@ -286,7 +297,7 @@ function features(doc: PDFDocument): FeatureInfo {
   const openAction = R(root.get("OpenAction"));
   return {
     encrypted: !trailer.get("Encrypt").isNull(),
-    needsPassword: false,
+    needsPassword: unlockedWithPassword,
     outlineItems: countOutline(doc.loadOutline()),
     links,
     annotations,
@@ -372,7 +383,7 @@ function scanImages(doc: PDFDocument, placements: Map<number, Placement>): Image
   return out;
 }
 
-function analyzeOpen(doc: PDFDocument, fileBytes: number, onProgress?: Progress): { report: AnalysisReport; scans: ImageScan[] } {
+function analyzeOpen(doc: PDFDocument, fileBytes: number, onProgress?: Progress, unlocked = false): { report: AnalysisReport; scans: ImageScan[] } {
   const pageCount = doc.countPages();
   const placements = new Map<number, Placement>();
   const pages: PageInfo[] = [];
@@ -403,12 +414,12 @@ function analyzeOpen(doc: PDFDocument, fileBytes: number, onProgress?: Progress)
     }
   }
   const scans = scanImages(doc, placements);
-  const f = features(doc);
+  const f = features(doc, unlocked);
   const totalTextChars = pages.reduce((s, p) => s + p.textChars, 0);
   const warnings: string[] = [];
   if (f.signatureFields > 0)
     warnings.push(`Contains ${f.signatureFields} signature field(s). Any modification invalidates digital signatures.`);
-  if (f.encrypted) warnings.push("The PDF is encrypted (no open password). Its encryption settings will be kept.");
+  if (f.encrypted && !unlocked) warnings.push("The PDF is encrypted (no open password). Its encryption settings will be kept.");
   if (f.pdfaPart) warnings.push(`Declares PDF/A-${f.pdfaPart}. Structure is kept, but conformance is not re-validated.`);
   if (f.javascript) warnings.push("Contains JavaScript. It is kept as-is.");
   const other = scans.filter((s) => s.info.colorClass === "other").length;
@@ -438,11 +449,11 @@ function analyzeOpen(doc: PDFDocument, fileBytes: number, onProgress?: Progress)
   };
 }
 
-export function analyze(bytes: Uint8Array, onProgress?: Progress): AnalysisReport {
+export function analyze(bytes: Uint8Array, onProgress?: Progress, password?: string): AnalysisReport {
   onProgress?.({ phase: "opening" });
-  const doc = openPdf(bytes);
+  const doc = openPdf(bytes, password);
   try {
-    return analyzeOpen(doc, bytes.byteLength, onProgress).report;
+    return analyzeOpen(doc, bytes.byteLength, onProgress, doc.getTrailer().get("Encrypt").isNull() ? false : !!password).report;
   } finally {
     doc.destroy();
   }
@@ -694,18 +705,29 @@ async function rewriteImage(doc: PDFDocument, s: ImageScan, o: OptimizeOptions):
   }
 }
 
-export function saveOptionsFor(pdfaPart: string | null): string {
+export function saveOptionsFor(pdfaPart: string | null, removePassword = false): string {
   // PDF/A-1 forbids object streams. Every other target gets them for extra structural savings.
   const objstms = pdfaPart === "1" ? "" : ",objstms";
-  return `garbage=deduplicate,compress,compress-fonts,compress-images${objstms}`;
+  // By default MuPDF keeps the original encryption and passwords. "decrypt" writes an unprotected file.
+  const decrypt = removePassword ? ",decrypt" : "";
+  return `garbage=deduplicate,compress,compress-fonts,compress-images${objstms}${decrypt}`;
 }
 
-export async function optimize(input: Uint8Array, options: OptimizeOptions, onProgress?: Progress): Promise<OptimizeResult> {
+/** Password handling for one job. The password is never stored. */
+export interface Security {
+  password?: string;
+  /** Save the compressed copy without the open password (default: keep it). */
+  removePassword?: boolean;
+}
+
+export async function optimize(input: Uint8Array, options: OptimizeOptions, onProgress?: Progress, security: Security = {}): Promise<OptimizeResult> {
   const t0 = performance.now();
   const inputBytes = input.byteLength;
   onProgress?.({ phase: "opening" });
 
-  let doc: PDFDocument | null = openPdf(input);
+  let doc: PDFDocument | null = openPdf(input, security.password);
+  const hadPassword = !!security.password && !doc.getTrailer().get("Encrypt").isNull();
+  const removePassword = hadPassword && !!security.removePassword;
   let before: DocFingerprint;
   let out: Uint8Array;
   let saveOptions: string;
@@ -723,7 +745,7 @@ export async function optimize(input: Uint8Array, options: OptimizeOptions, onPr
     outcomes.sort((x, y) => x.objNum - y.objNum);
     onProgress?.({ phase: "images", done: scans.length, total: scans.length });
     onProgress?.({ phase: "saving" });
-    saveOptions = saveOptionsFor(report.features.pdfaPart);
+    saveOptions = saveOptionsFor(report.features.pdfaPart, removePassword);
     const buf = doc.saveToBuffer(saveOptions);
     out = buf.asUint8Array().slice(); // copy out of the WASM heap before freeing
     buf.destroy();
@@ -736,8 +758,11 @@ export async function optimize(input: Uint8Array, options: OptimizeOptions, onPr
   let checks: VerificationCheck[];
   let after: DocFingerprint | null = null;
   try {
-    const outDoc = openPdf(out);
+    const outDoc = openPdf(out, removePassword ? undefined : security.password);
     try {
+      if (hadPassword && !removePassword && outDoc.getTrailer().get("Encrypt").isNull()) {
+        throw new Error("The compressed copy lost its password protection.");
+      }
       after = fingerprint(outDoc, onProgress, "verifying");
     } finally {
       outDoc.destroy();
@@ -758,5 +783,105 @@ export async function optimize(input: Uint8Array, options: OptimizeOptions, onPr
     verified: checks.every((c) => c.ok),
     searchableOutput: totalChars > 0,
     saveOptions,
+    password: hadPassword ? (removePassword ? "removed" : "kept") : "none",
   };
+}
+
+// ---------------------------------------------------------------- sample page
+
+function renderPagePng(doc: PDFDocument, index: number, maxPx: number): { png: Uint8Array; width: number; height: number } {
+  const page = doc.loadPage(index);
+  try {
+    const b = page.getBounds();
+    const s = maxPx / Math.max(b[2] - b[0], b[3] - b[1]);
+    const pix = page.toPixmap(mupdf.Matrix.scale(s, s), mupdf.ColorSpace.DeviceRGB, false, true);
+    try {
+      return { png: pix.asPNG().slice(), width: pix.getWidth(), height: pix.getHeight() };
+    } finally {
+      pix.destroy();
+    }
+  } finally {
+    page.destroy();
+  }
+}
+
+/** The page whose images take the most bytes: the most representative sample. */
+function pickSamplePage(doc: PDFDocument): number {
+  let best = 0;
+  let bestBytes = -1;
+  const n = doc.countPages();
+  for (let i = 0; i < n; i++) {
+    const page = doc.loadPage(i) as mupdf.PDFPage;
+    try {
+      const refs = new Map<number, PDFObject>();
+      collectImageRefs(page.getObject().getInheritable("Resources"), refs, new Set());
+      let bytes = 0;
+      for (const ref of refs.values()) bytes += Number(R(ref.get("Length")).valueOf()) || 0;
+      if (bytes > bestBytes) {
+        bestBytes = bytes;
+        best = i;
+      }
+    } finally {
+      page.destroy();
+    }
+  }
+  return best;
+}
+
+/**
+ * Compresses a single page with the given profile and renders it next to the
+ * original, so quality can be judged before processing the whole file.
+ *
+ * The page is copied into a separate one-page document first. The original
+ * document is never modified, and the image byte counts are measured on the
+ * real re-encoded streams (not estimated).
+ */
+export async function samplePage(
+  input: Uint8Array,
+  options: OptimizeOptions,
+  pageIndex: number | null,
+  maxPx = 2000,
+  password?: string,
+): Promise<SampleResult> {
+  const t0 = performance.now();
+  const src = openPdf(input, password);
+  try {
+    const pageCount = src.countPages();
+    const index = Math.max(0, Math.min(pageCount - 1, pageIndex ?? pickSamplePage(src)));
+    const original = renderPagePng(src, index, maxPx);
+
+    const one = new mupdf.PDFDocument();
+    try {
+      one.graftPage(-1, src, index);
+      const { scans } = analyzeOpen(one, 0);
+      const outcomes: ImageOutcome[] = [];
+      for (const scan of scans) outcomes.push(await rewriteImage(one, scan, options));
+      const buf = one.saveToBuffer("compress");
+      const bytes = buf.asUint8Array().slice();
+      buf.destroy();
+      const re = openPdf(bytes);
+      let compressed;
+      try {
+        compressed = renderPagePng(re, 0, maxPx);
+      } finally {
+        re.destroy();
+      }
+      return {
+        pageIndex: index,
+        pageCount,
+        original,
+        compressed,
+        imageCount: outcomes.length,
+        imageBytesBefore: outcomes.reduce((a, o) => a + o.beforeBytes, 0),
+        imageBytesAfter: outcomes.reduce((a, o) => a + o.afterBytes, 0),
+        outcomes,
+        options,
+        elapsedMs: Math.round(performance.now() - t0),
+      };
+    } finally {
+      one.destroy();
+    }
+  } finally {
+    src.destroy();
+  }
 }

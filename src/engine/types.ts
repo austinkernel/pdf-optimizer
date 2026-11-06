@@ -134,6 +134,8 @@ export interface OptimizeResult {
   verified: boolean;
   searchableOutput: boolean;
   saveOptions: string;
+  /** Open-password protection of the output: "kept" (same password as the original), "removed", or "none". */
+  password: "kept" | "removed" | "none";
   /** Network requests made by the engine worker while processing (expected: 0). Set by the worker. */
   workerNetworkRequests?: number;
 }
@@ -144,3 +146,24 @@ export type ProgressEvent =
   | { phase: "images"; done: number; total: number }
   | { phase: "saving" }
   | { phase: "verifying"; done: number; total: number };
+
+export interface SampleImage {
+  png: Uint8Array;
+  width: number;
+  height: number;
+}
+
+/** One page compressed with a profile, rendered next to the original. */
+export interface SampleResult {
+  pageIndex: number;
+  pageCount: number;
+  original: SampleImage;
+  compressed: SampleImage;
+  imageCount: number;
+  /** Measured stored size of this page's images before and after re-encoding. */
+  imageBytesBefore: number;
+  imageBytesAfter: number;
+  outcomes: ImageOutcome[];
+  options: OptimizeOptions;
+  elapsedMs: number;
+}

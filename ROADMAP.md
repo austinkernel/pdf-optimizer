@@ -10,14 +10,11 @@ Nothing yet. New ideas start here.
 
 ## Planned
 
-- [ ] **Sample preview**: compress one page first, then compare before and after side by side, with zoom, before running the whole file.
 - [ ] **Custom settings**: JPEG quality, maximum DPI, grayscale and black-and-white options, with sensible defaults.
 - [ ] **Smaller black-and-white scans** (CCITT Group 4). Needs a custom MuPDF build.
-- [ ] **Password-protected PDFs**: ask for the password and process the file.
 - [ ] **Colour spaces and masks** now left unchanged (CMYK, Indexed, images with transparency): handle where it is safe.
 - [ ] **Per-page SSIM report** and page-by-page comparison in the results.
 - [ ] **Multiple PDFs at once** (batch).
-- [ ] **Android: open PDFs from the share sheet** ("Share → PDF Optimizer"). Android supports this for installed web apps; iPhone does not.
 - [ ] **Custom app icon** (see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#app-icon)).
 
 ## Ideas, not committed
@@ -31,6 +28,7 @@ Nothing yet. New ideas start here.
 
 ## Done
 
+- **0.5.0**: sample page preview (side by side, zoom, live profile switching); password-protected PDFs (password kept by default); Android share-to-app; diagnostics moved to Troubleshooting; live/preview offline caches no longer clash.
 - **0.4.1**: cleaner results screen (save first, verification and details tap-to-open); collapsible analysis sections.
 - **0.4.0**: Android-ready wording and install help; orange theme; updates in a collapsed "App info & updates" section with an "Update ready" badge (no popup); preview app (blue-gray) and roadmap.
 - **0.3.0**: reliable update checks, update popup (since replaced), Export diagnostics.

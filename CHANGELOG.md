@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.5.0: sample preview, passwords, Android share
+### Added
+- **Sample preview** ("Preview a sample page"): compresses one page on a
+  one-page copy and shows it next to the original. Side by side / original /
+  compressed views, zoom Fit/2×/4× with synced scrolling, live profile
+  switching, previous/next page, and the measured byte size of that page's
+  images. The original document is never modified.
+- **Password-protected PDFs**: password prompt and wrong-password message.
+  Output keeps the same password by default ("Keep the password" switch).
+  Verification reopens the output with the right password. Results show
+  "password kept/removed".
+- **Android share target**: installed on Android, the app appears in the
+  share sheet for PDFs. The service worker stores the file briefly in the
+  app's Cache Storage; the page reads it once and deletes it.
+### Changed
+- Export diagnostics moved to App info & updates → Troubleshooting.
+### Fixed
+- **The live and preview apps deleted each other's offline cache** (shared
+  origin, same name prefix), breaking the other app offline until its next
+  update. Cache names now include the service-worker scope.
+- Sample viewer no longer runs a second, identical sample after the first.
+### Tests
+- Unit: sample page (render, measured bytes, input untouched) and passwords
+  (missing, wrong, kept, removed, sample on a locked file).
+- e2e 42/42 on iPhone and Pixel 7 profiles: sample viewer, password flow,
+  share-sheet flow (file handed over on-device, deleted after pickup, never
+  reaches the server).
+- Preview isolation 13/13, including "live app still works offline after
+  the preview installed" (failed before the fix).
+
 ## 0.4.1: cleaner results screen
 ### Changed
 - **Results screen reorganised.** The result, a "✓ Verified: all N checks

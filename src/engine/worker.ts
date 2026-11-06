@@ -5,7 +5,7 @@
  * loading its own .wasm from the app origin, which the service worker serves
  * from the offline cache.
  */
-import { analyze, optimize, EngineError } from "./mupdfEngine";
+import { analyze, optimize, samplePage, EngineError } from "./mupdfEngine";
 import { configureJpegEncoder } from "./jpegEncoder";
 import type { WorkerRequest, WorkerResponse } from "./protocol";
 
@@ -20,14 +20,17 @@ self.onmessage = async (ev: MessageEvent<WorkerRequest>) => {
   const progress = (p: Parameters<NonNullable<Parameters<typeof analyze>[1]>>[0]) => post({ id: req.id, type: "progress", progress: p });
   try {
     if (req.type === "analyze") {
-      const report = analyze(new Uint8Array(req.buffer), progress);
+      const report = analyze(new Uint8Array(req.buffer), progress, req.password);
       post({ id: req.id, type: "analysis", report });
     } else if (req.type === "optimize") {
       const before = performance.getEntriesByType("resource").length;
-      const result = await optimize(new Uint8Array(req.buffer), req.options, progress);
+      const result = await optimize(new Uint8Array(req.buffer), req.options, progress, { password: req.password, removePassword: req.removePassword });
       result.workerNetworkRequests = performance.getEntriesByType("resource").length - before;
       const buf = result.bytes.buffer as ArrayBuffer;
       post({ id: req.id, type: "optimized", result }, [buf]);
+    } else if (req.type === "sample") {
+      const result = await samplePage(new Uint8Array(req.buffer), req.options, req.pageIndex, req.maxPx, req.password);
+      post({ id: req.id, type: "sampled", result }, [result.original.png.buffer as ArrayBuffer, result.compressed.png.buffer as ArrayBuffer]);
     }
   } catch (e) {
     const err = e as Error;

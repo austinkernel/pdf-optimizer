@@ -31,7 +31,6 @@ export function ResultsView({
   pageRequests,
   onAnotherProfile,
   onNewFile,
-  onDiagnostics,
 }: {
   result: OptimizeResult;
   blob: Blob;
@@ -39,7 +38,6 @@ export function ResultsView({
   pageRequests: number;
   onAnotherProfile: () => void;
   onNewFile: () => void;
-  onDiagnostics: () => void;
 }) {
   const [name, setName] = useState(() => outputName(originalName));
   const [shareError, setShareError] = useState<string | null>(null);
@@ -89,6 +87,7 @@ export function ResultsView({
         <div className="hero-meta">
           {profile.label} · {formatMs(result.elapsedMs)}
           {result.searchableOutput ? " · searchable text kept" : ""}
+          {result.password === "kept" ? " · password kept" : result.password === "removed" ? " · password removed" : ""}
         </div>
         <div className={`check-pill ${result.verified ? "ok" : "bad"}`} role="status">
           {result.verified ? `✓ Verified: all ${total} checks passed` : `✕ ${total - passed} of ${total} checks failed`}
@@ -180,6 +179,9 @@ export function ResultsView({
               </span>
             </div>
             <div className="row"><span className="row-label">Searchable text</span><span className="row-value">{result.searchableOutput ? "Yes" : "No (image only)"}</span></div>
+            {result.password !== "none" && (
+              <div className="row"><span className="row-label">Password</span><span className="row-value">{result.password === "kept" ? "Same as the original" : "Removed"}</span></div>
+            )}
             {[...decisions].map(([d, n]) => (
               <div className="row" key={d}>
                 <span className="row-label">{DECISION_LABEL[d]}</span>
@@ -193,22 +195,16 @@ export function ResultsView({
         </Disclosure>
 
         <Disclosure title="More">
-          <div className="actions tight">
-            {shareable && (
-              <button type="button" className="btn btn-secondary" disabled={!canSave} onClick={download}>
-                Download instead
-              </button>
-            )}
-            <button type="button" className="btn btn-secondary" onClick={onDiagnostics}>
-              Export diagnostics
-            </button>
-          </div>
-          <p className="footnote">
-            {shareable
-              ? "Download saves straight to the browser's downloads, without the share sheet. "
-              : ""}
-            Diagnostics is a structure-only report for troubleshooting (no file name or content).
-          </p>
+          {shareable && (
+            <>
+              <div className="actions tight">
+                <button type="button" className="btn btn-secondary" disabled={!canSave} onClick={download}>
+                  Download instead
+                </button>
+              </div>
+              <p className="footnote">Saves straight to the browser's downloads, without the share sheet.</p>
+            </>
+          )}
           <p className="footnote">
             Your original file is never changed. Network requests during processing: {pageRequests} from the app page,{" "}
             {result.workerNetworkRequests ?? "n/a"} from the engine.

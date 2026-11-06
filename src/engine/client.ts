@@ -14,7 +14,7 @@
  *   in the background while the user reads the result.
  */
 import type { ErrorCode, WorkerRequest, WorkerResponse } from "./protocol";
-import type { AnalysisReport, OptimizeOptions, OptimizeResult, ProgressEvent } from "./types";
+import type { AnalysisReport, OptimizeOptions, OptimizeResult, ProgressEvent, SampleResult } from "./types";
 
 export class EngineFailure extends Error {
   code: ErrorCode | "cancelled" | "crashed";
@@ -110,6 +110,7 @@ export class EngineClient {
         p.resolve(msg.report); // analysis decodes no images, so the heap stays small: keep the warm worker
         break;
       case "optimized":
+      case "sampled": // both decode images: start the next job on a fresh heap
         this.pending.delete(msg.id);
         this.recycle();
         p.resolve(msg.result);
@@ -148,9 +149,9 @@ export class EngineClient {
     return result;
   }
 
-  async analyze(file: Blob, onProgress?: (p: ProgressEvent) => void): Promise<AnalysisReport> {
+  async analyze(file: Blob, onProgress?: (p: ProgressEvent) => void, password?: string): Promise<AnalysisReport> {
     const buffer = await file.arrayBuffer();
-    return this.run<AnalysisReport>((id) => ({ req: { id, type: "analyze", buffer }, transfer: [buffer] }), onProgress);
+    return this.run<AnalysisReport>((id) => ({ req: { id, type: "analyze", buffer, password }, transfer: [buffer] }), onProgress);
   }
 
   async optimize(
@@ -158,9 +159,20 @@ export class EngineClient {
     options: OptimizeOptions,
     onProgress?: (p: ProgressEvent) => void,
     onStart?: () => void,
+    security: { password?: string; removePassword?: boolean } = {},
   ): Promise<OptimizeResult> {
     const buffer = await file.arrayBuffer();
-    return this.run<OptimizeResult>((id) => ({ req: { id, type: "optimize", buffer, options }, transfer: [buffer] }), onProgress, onStart);
+    return this.run<OptimizeResult>(
+      (id) => ({ req: { id, type: "optimize", buffer, options, password: security.password, removePassword: security.removePassword }, transfer: [buffer] }),
+      onProgress,
+      onStart,
+    );
+  }
+
+  /** Compresses one page and renders it next to the original. pageIndex null = the most image-heavy page. */
+  async sample(file: Blob, options: OptimizeOptions, pageIndex: number | null, password?: string, maxPx = 2000): Promise<SampleResult> {
+    const buffer = await file.arrayBuffer();
+    return this.run<SampleResult>((id) => ({ req: { id, type: "sample", buffer, options, pageIndex, maxPx, password }, transfer: [buffer] }));
   }
 
   cancel(): void {

@@ -246,3 +246,55 @@ button { font: inherit; }
 .disclosure-body { padding: 0 0 12px; }
 .disclosure-body .group { border-radius: 0; border-top: 0.5px solid var(--sep); }
 .disclosure-body .actions, .disclosure-body .footnote { padding: 0 16px; margin-left: 0; margin-right: 0; }
+
+/* Analysis: sample button and password switch */
+.sample-btn { margin-top: 14px; }
+.toggle-group { margin-top: 14px; }
+.toggle-row { gap: 12px; cursor: pointer; }
+.switch {
+  appearance: none; -webkit-appearance: none; flex: 0 0 51px; width: 51px; height: 31px; border-radius: 16px;
+  background: var(--fill); position: relative; cursor: pointer; transition: background 0.2s; margin: 0;
+}
+.switch::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 14px;
+  background: #fff; box-shadow: 0 2px 4px #0003; transition: transform 0.2s;
+}
+.switch:checked { background: var(--green); }
+.switch:checked::after { transform: translateX(20px); }
+.lock-icon { text-align: center; font-size: 48px; }
+
+/* Sample viewer: full-screen sheet */
+.sample-sheet {
+  position: fixed; inset: 0; z-index: 90; background: var(--bg); display: flex; flex-direction: column;
+  padding: calc(8px + env(safe-area-inset-top)) 12px calc(10px + env(safe-area-inset-bottom));
+  gap: 8px;
+}
+.sample-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px; }
+.sample-header h2 { margin: 0; font-size: 18px; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0; scrollbar-width: none; }
+.chip {
+  flex: 0 0 auto; border: 1px solid var(--sep); background: var(--card); color: var(--text); border-radius: 16px;
+  padding: 6px 12px; font-size: 14px; cursor: pointer;
+}
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+.chip:disabled { opacity: 0.6; }
+.sample-controls { display: flex; gap: 8px; }
+.segmented { display: flex; flex: 1; background: var(--fill); border-radius: 9px; padding: 2px; }
+.segmented.small { flex: 0 0 auto; }
+.segmented button {
+  flex: 1; border: 0; background: transparent; color: var(--text); font-size: 13px; padding: 6px 8px;
+  border-radius: 7px; cursor: pointer; white-space: nowrap;
+}
+.segmented button.on { background: var(--card); font-weight: 600; box-shadow: 0 1px 3px #0002; }
+.sample-view { flex: 1; min-height: 0; display: flex; gap: 6px; position: relative; }
+.sample-pane { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--card); border-radius: 10px; overflow: hidden; }
+.sample-label { font-size: 12px; color: var(--text-2); text-align: center; padding: 4px; border-bottom: 0.5px solid var(--sep); }
+.sample-scroll { flex: 1; overflow: auto; -webkit-overflow-scrolling: touch; background: #fff; }
+.sample-scroll img { display: block; max-width: none; height: auto; }
+.sample-loading {
+  position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--bg) 70%, transparent); font-weight: 600;
+}
+.sample-stats { font-size: 14px; padding: 0 4px; }
+.sample-nav { display: flex; gap: 8px; }
+.sample-nav .btn { min-height: 44px; padding: 8px; font-size: 15px; }
