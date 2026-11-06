@@ -72,11 +72,16 @@ One-time setup:
 2. Under "Build and deployment" → Source, choose **GitHub Actions**.
 
 The app is then served at `https://<user>.github.io/pdf-optimizer/` over
-HTTPS. To install it on an iPhone:
-1. Open the URL in Safari.
-2. Tap Share → Add to Home Screen.
-3. Launch it once from the Home Screen while online, so the service worker
-   caches the app (about 15 MB) for offline use.
+HTTPS. It runs on iPhone/iPad (Safari, iOS 16.4+) and Android (Chrome,
+Edge, Samsung Internet; recent versions). Opened in a browser, it shows how
+to install it:
+- **iPhone/iPad:** Safari → Share → Add to Home Screen.
+- **Android:** an **Install app** button, or browser menu ⋮ → Install app /
+  Add to Home screen.
+
+Open it once while online after installing, so it caches itself (about
+15 MB) for offline use. Android has been tested in Chromium with a Pixel 7
+profile (`E2E_DEVICE="Pixel 7" npm run e2e`), not yet on a physical phone.
 
 Updates: the app checks for a new version at launch, whenever it returns to
 the foreground, and every 30 minutes. When one has downloaded, a small
@@ -100,6 +105,24 @@ it all. The plan and status are in [`ROADMAP.md`](ROADMAP.md).
   service worker scopes, names and icons).
 - `.github/workflows/deploy.yml` publishes `main` at the site root and `next`
   under `/preview/`.
+
+## Using your own icon
+
+Send one square PNG, ideally **1024 × 1024**, with a solid (not transparent)
+background and square corners. iOS and Android round the corners themselves.
+Keep the important part inside the middle ~80% (Android may crop to a
+circle). Every size is generated from it:
+
+| File (in `public/`) | Size | Used by |
+|---|---|---|
+| `apple-touch-icon.png` | 180 × 180 | iPhone/iPad Home Screen |
+| `icon-192.png` | 192 × 192 | Android, browser tab, in-app header |
+| `icon-512.png` | 512 × 512 | Android install and splash screen |
+| `icon-maskable-512.png` | 512 × 512, artwork inside the centre 80% | Android adaptive (circle/squircle) icons |
+| `preview-*.png` (same four) | same | Preview app; generated with the "PREVIEW" band |
+
+`scripts/make-icons.py` currently draws the default icon; with a source image
+it would resize it instead.
 
 ## Known limitations (current version)
 

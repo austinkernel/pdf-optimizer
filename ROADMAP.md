@@ -9,8 +9,8 @@ single merge into `main`.
 
 | Where | What it is | Who sees it |
 |---|---|---|
-| `main` branch → **PDF Optimizer** (blue icon) | The live app | Your daily app |
-| `next` branch → **PDF Optimizer Preview** (orange icon, "PREVIEW" banner) | Work in progress, tested | Install it as a second Home Screen app to try changes before release |
+| `main` branch → **PDF Optimizer** (orange icon) | The live app | Your daily app, and the link to share |
+| `next` branch → **PDF Optimizer Preview** (blue-gray icon, striped "PREVIEW" banner) | Work in progress, tested | Install it as a second Home Screen app to try changes before release |
 
 1. A new idea is added below under **Planned**.
 2. It is built on `next`. Automatic tests run, and the preview app updates itself a few minutes later.
@@ -22,6 +22,9 @@ It never sends documents anywhere and keeps no documents, same as the live app.
 
 ## Working on (in `next`)
 
+- [x] **Android support shown in the app**: device-neutral wording ("this device", not "this iPhone"). Install help in the browser: a one-tap **Install app** button where the browser offers it (Android Chrome, Edge, Samsung Internet), menu steps otherwise, and Share → Add to Home Screen steps on iPhone. Full flow tested on an Android (Pixel 7) profile in Chromium, the engine Chrome on Android uses. *Not yet tried on a real Android phone.*
+- [x] **Orange instead of blue** in the live app: accent, buttons and icon. Deep orange in light mode so white button text stays readable; bright orange with dark text in dark mode.
+- [x] **Preview restyled** in a plain, muted blue-gray: flat icon with PREVIEW band, striped monospace banner, slate buttons.
 - [x] **Updates moved into a collapsed "App info & updates" section**, like Privacy. No popup. A small blue "Update ready" badge next to the section title when a new version has downloaded. *Built and tested; waiting for you to try it in the preview app.*
 
 ## Planned
@@ -33,6 +36,8 @@ It never sends documents anywhere and keeps no documents, same as the live app.
 - [ ] **Colour spaces and masks** now left unchanged (CMYK, Indexed, images with transparency): handle where it is safe.
 - [ ] **Per-page SSIM report** and page-by-page comparison in the results.
 - [ ] **Multiple PDFs at once** (batch).
+- [ ] **Android: open PDFs from the share sheet** ("Share → PDF Optimizer"). Android supports this for installed web apps; iPhone does not.
+- [ ] **Custom app icon**, if you supply one (see README, "Using your own icon").
 
 ## Ideas, not committed
 

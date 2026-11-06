@@ -7,7 +7,16 @@
   before release. It has its own name, icons, manifest and service worker
   scope, and works offline like the live app.
 - `ROADMAP.md`: working on, planned, ideas and done.
+- **Android-ready wording and install help.** "this device" instead of
+  "this iPhone". In a browser, the home screen shows an **Install app**
+  button where available (Android Chromium browsers), Android menu steps
+  otherwise, or iPhone Share → Add to Home Screen steps. Hidden once
+  installed.
 ### Changed
+- **Orange accent and icon** for the live app (light `#C2410C` with white
+  text, 5.2:1 contrast; dark `#FF8A3D` with dark text, 8.9:1).
+- **Preview restyled** in muted blue-gray: flat icon with PREVIEW band,
+  striped monospace banner, slate accent (`#5B6B7D` / `#A5B4C6`).
 - **Updates live in a collapsed "App info & updates" section** (merged with
   the old "Privacy & app info"). The centered update popup is gone. When a new
   version has downloaded, a small blue "Update ready" badge appears next to
@@ -21,6 +30,10 @@
 - Deploy workflow publishes `main` at the site root and `next` under
   `/preview/` when that branch exists.
 ### Tests
+- e2e runs on iPhone and Android (Pixel 7) profiles: 24/24 each, including
+  orange accent, install help per platform and device-neutral wording.
+- Unit: platform detection (iPhone, iPad desktop mode, Mac, Android
+  browsers, Windows).
 - e2e (21/21): updates hidden by default; simulated release shows the badge
   (also collapsed), no popup, and Install update now reloads.
 - `npm run e2e:preview` (10 checks), including a check that removing the

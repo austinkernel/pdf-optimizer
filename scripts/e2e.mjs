@@ -22,7 +22,11 @@ writeFileSync(big, await makeScanPdf({ mode: "color", encoding: "flate", pages: 
 const server = await preview({ preview: { port: 4317, strictPort: true }, logLevel: "warn" });
 const url = "http://localhost:4317/";
 const browser = await chromium.launch();
-const iphone = devices["iPhone 15"] ?? devices["iPhone 13"];
+// E2E_DEVICE picks the phone profile, e.g. "Pixel 7" for Android (Chromium = Chrome's engine).
+const DEVICE = process.env.E2E_DEVICE ?? "iPhone 15";
+const iphone = devices[DEVICE] ?? devices["iPhone 13"];
+const isAndroid = /pixel|galaxy|android/i.test(DEVICE);
+console.log(`device profile: ${DEVICE}`);
 const ctx = await browser.newContext({ ...iphone, colorScheme: "light" });
 const page = await ctx.newPage();
 const errors = [];
@@ -72,6 +76,14 @@ try {
   await page.goto(url);
   if (shots) await page.screenshot({ path: join(shots, "1-home.png") });
   check("home screen shows primary action", await page.getByRole("button", { name: "Choose PDF" }).isVisible());
+  check("device-neutral wording", (await page.locator("body").innerText()).includes("Processed entirely on this device"));
+  {
+    const bg = await page.getByRole("button", { name: "Choose PDF" }).evaluate((el) => getComputedStyle(el).backgroundColor);
+    check("live app accent is orange", bg === "rgb(194, 65, 12)", bg);
+    const hint = await page.locator(".install-hint").innerText().catch(() => "");
+    const ok = isAndroid ? /Install app|Add to Home screen/.test(hint) : /Add to Home Screen/.test(hint);
+    check(`install help for ${isAndroid ? "Android" : "iPhone"} shown in browser`, ok, hint.replace(/\s+/g, " ").trim());
+  }
 
   // Wait for the service worker to install and precache everything.
   await page.evaluate(async () => {

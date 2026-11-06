@@ -6,8 +6,10 @@
   --text: #000000;
   --text-2: #3c3c4399;
   --sep: #3c3c434a;
-  --accent: #007aff;
-  --accent-press: #0062cc;
+  /* Orange accent. Deep enough for white text (contrast 5.2:1). */
+  --accent: #c2410c;
+  --accent-press: #9a3412;
+  --on-accent: #ffffff;
   --fill: #7676801f;
   --green: #34c759;
   --red: #ff3b30;
@@ -23,8 +25,9 @@
     --text: #ffffff;
     --text-2: #ebebf599;
     --sep: #54545899;
-    --accent: #0a84ff;
-    --accent-press: #409cff;
+    --accent: #ff8a3d;
+    --accent-press: #ffa868;
+    --on-accent: #1a0b00; /* dark text on bright orange (8.9:1) */
     --fill: #7676803d;
     --green: #30d158;
     --red: #ff453a;
@@ -91,7 +94,7 @@ button { font: inherit; }
   min-height: 50px; padding: 14px 20px; font-size: 17px; font-weight: 600; cursor: pointer;
 }
 .btn:disabled { opacity: 0.4; }
-.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary { background: var(--accent); color: var(--on-accent); }
 .btn-primary:active:not(:disabled) { background: var(--accent-press); }
 .btn-secondary { background: var(--card); color: var(--accent); }
 .btn-secondary:active:not(:disabled) { background: var(--fill); }
@@ -166,7 +169,7 @@ button { font: inherit; }
 .modal-title { margin: 0 40px 10px 0; font-size: 22px; font-weight: 700; }
 .modal-icon {
   width: 56px; height: 56px; border-radius: 28px; margin: 4px auto 12px; display: flex;
-  align-items: center; justify-content: center; font-size: 28px; color: #fff; background: var(--accent);
+  align-items: center; justify-content: center; font-size: 28px; color: var(--on-accent); background: var(--accent);
 }
 .modal-text { margin: 0 0 4px; font-size: 16px; color: var(--text-2); }
 .modal-text.small { font-size: 14px; }
@@ -177,9 +180,23 @@ button { font: inherit; }
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .modal-backdrop { animation: none; } }
 
+/* Preview build: muted blue-gray, deliberately plain "work in progress" look. */
+:root[data-variant="preview"] {
+  --accent: #5b6b7d;
+  --accent-press: #46535f;
+  --on-accent: #ffffff;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-variant="preview"] {
+    --accent: #a5b4c6;
+    --accent-press: #c3cdd9;
+    --on-accent: #0f172a;
+  }
+}
 .preview-banner {
-  background: var(--orange); color: #000; text-align: center; font-size: 13px; font-weight: 600;
-  padding: 6px 12px;
+  color: #1e293b; text-align: center; font: 600 12px/1.3 ui-monospace, Menlo, monospace;
+  letter-spacing: 0.02em; padding: 6px 12px; border-bottom: 1px dashed #94a3b8;
+  background: repeating-linear-gradient(-45deg, #cbd5e1 0 10px, #d5dde7 10px 20px);
 }
 
 /* "App info & updates" summary row: title on the left, update badge on the right */
@@ -198,3 +215,5 @@ button { font: inherit; }
 }
 .update-badge.quiet { background: var(--fill); color: var(--text-2); font-weight: 400; }
 .update-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--accent); }
+
+.install-hint { margin-top: 4px; }

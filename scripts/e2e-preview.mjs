@@ -31,7 +31,11 @@ try {
   await page.goto(base + "/preview/");
   await page.waitForLoadState("load");
   check("preview: page is the preview build (title)", (await page.title()) === "PDF Optimizer Preview", await page.title());
-  check("preview: orange PREVIEW banner shown", await page.locator(".preview-banner").isVisible());
+  check("preview: PREVIEW banner shown", await page.locator(".preview-banner").isVisible());
+  {
+    const bg = await page.getByRole("button", { name: "Choose PDF" }).evaluate((el) => getComputedStyle(el).backgroundColor);
+    check("preview accent is blue-gray (not the live orange)", bg === "rgb(91, 107, 125)", bg);
+  }
   const prev = await manifest();
   check("preview: separate manifest name and icons", prev.name === "PDF Optimizer Preview" && prev.icons[0].src === "preview-icon-192.png", prev.name);
   await page.evaluate(() => navigator.serviceWorker.ready);

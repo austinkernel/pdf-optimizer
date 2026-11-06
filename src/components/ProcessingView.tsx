@@ -50,7 +50,7 @@ export function ProcessingView({
       <p className="processing-label">{label}</p>
       <p className="processing-time">{formatMs(Math.max(0, now - startedAt))}</p>
       <p className="footnote center">
-        Keep this app open and on screen. iOS pauses web apps in the background. Everything runs on this device.
+        Keep this app open and on screen. Phones pause web apps in the background. Everything runs on this device.
       </p>
       <button type="button" className="btn btn-secondary" onClick={onCancel}>
         Cancel
