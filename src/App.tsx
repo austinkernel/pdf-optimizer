@@ -10,12 +10,15 @@ import { formatBytes } from "./format";
 import { pageRequestCount } from "./netMonitor";
 import { applyUpdate, checkForUpdates, subscribePwa, type PwaState, type UpdateState } from "./pwa";
 import { DiagnosticsDialog } from "./components/Dialogs";
+import { SampleViewer } from "./components/SampleViewer";
+import { PasswordView } from "./components/PasswordView";
 import { promptInstall, subscribeInstall, type InstallState } from "./install";
 import { buildDiagnostics } from "./diagnostics";
 
 type Stage =
   | { kind: "home" }
   | { kind: "analyzing"; file: File; progress: ProgressEvent | null; startedAt: number }
+  | { kind: "password"; file: File; error: string | null }
   | { kind: "ready"; file: File; report: AnalysisReport }
   | { kind: "processing"; file: File; report: AnalysisReport; progress: ProgressEvent | null; startedAt: number }
   | { kind: "done"; file: File; report: AnalysisReport; result: OptimizeResult; blob: Blob; pageRequests: number }
@@ -62,7 +65,8 @@ function friendlyError(e: unknown): string {
   if (e instanceof EngineFailure) {
     switch (e.code) {
       case "password":
-        return "This PDF is protected with an open password. Password support isn't available yet.";
+      case "wrong-password":
+        return "This PDF needs its password to open.";
       case "not-pdf":
         return "This file couldn't be read as a PDF. It may be damaged or a different file type.";
       case "memory":
@@ -95,6 +99,10 @@ export default function App() {
   const [pwa, setPwa] = useState<PwaState | null>(null);
   const [diagnostics, setDiagnostics] = useState<string | null>(null);
   const [install, setInstall] = useState<InstallState | null>(null);
+  // Password for the current file: in memory only, cleared when a new file is chosen.
+  const [password, setPassword] = useState<string | undefined>(undefined);
+  const [keepPassword, setKeepPassword] = useState(true);
+  const [sampleOpen, setSampleOpen] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => subscribePwa(setPwa), []);
@@ -113,23 +121,37 @@ export default function App() {
 
   const pickFile = () => fileInput.current?.click();
 
-  const onFile = useCallback(async (file: File | undefined) => {
-    if (!file) return;
-    if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
-      setStage({ kind: "error", message: `"${file.name}" is not a PDF.` });
-      return;
-    }
+  const analyzeFile = useCallback(async (file: File, pw?: string) => {
     setStage({ kind: "analyzing", file, progress: null, startedAt: Date.now() });
     try {
-      const report = await engine.current!.analyze(file, (progress) =>
-        setStage((s) => (s.kind === "analyzing" ? { ...s, progress } : s)),
+      const report = await engine.current!.analyze(
+        file,
+        (progress) => setStage((s) => (s.kind === "analyzing" ? { ...s, progress } : s)),
+        pw,
       );
+      setPassword(pw);
       setStage({ kind: "ready", file, report });
     } catch (e) {
       if (e instanceof EngineFailure && e.code === "cancelled") return setStage({ kind: "home" });
+      if (e instanceof EngineFailure && e.code === "password") return setStage({ kind: "password", file, error: null });
+      if (e instanceof EngineFailure && e.code === "wrong-password") return setStage({ kind: "password", file, error: "That password isn't right. Try again." });
       setStage({ kind: "error", message: friendlyError(e), file });
     }
   }, []);
+
+  const onFile = useCallback(
+    async (file: File | undefined) => {
+      if (!file) return;
+      setPassword(undefined);
+      setKeepPassword(true);
+      if (!/\.pdf$/i.test(file.name) && file.type !== "application/pdf") {
+        setStage({ kind: "error", message: `"${file.name}" is not a PDF.` });
+        return;
+      }
+      await analyzeFile(file);
+    },
+    [analyzeFile],
+  );
 
   const compress = async (file: File, report: AnalysisReport) => {
     if (engine.current!.busy) return; // duplicate-tap guard
@@ -142,6 +164,7 @@ export default function App() {
         optionsFor(profile),
         (progress) => setStage((s) => (s.kind === "processing" ? { ...s, progress } : s)),
         () => (req0 = pageRequestCount()), // count from the moment the document reaches the engine
+        { password, removePassword: !keepPassword },
       );
       const blob = new Blob([result.bytes as Uint8Array<ArrayBuffer>], { type: "application/pdf" });
       result.bytes = new Uint8Array(0); // drop the second copy; the Blob holds the output now
@@ -227,15 +250,46 @@ export default function App() {
           <>
             <AnalysisView report={stage.report} fileName={stage.file.name} />
             <ProfilePicker value={profile} onChange={setProfile} />
-            <button type="button" className="btn btn-plain diag-btn" onClick={() => showDiagnostics(stage.report)}>
-              Export diagnostics
+            <button type="button" className="btn btn-secondary sample-btn" onClick={() => setSampleOpen(true)}>
+              Preview a sample page
             </button>
+            {stage.report.features.needsPassword && (
+              <div className="group toggle-group">
+                <label className="row toggle-row">
+                  <span className="check-text">
+                    <span>Keep the password</span>
+                    <span className="choice-sub">{keepPassword ? "The compressed copy opens with the same password." : "The compressed copy will open without a password."}</span>
+                  </span>
+                  <input type="checkbox" className="switch" checked={keepPassword} onChange={(e) => setKeepPassword(e.target.checked)} />
+                </label>
+              </div>
+            )}
             <div className="actions sticky-actions">
               <button type="button" className="btn btn-primary btn-large" onClick={() => compress(stage.file, stage.report)}>
                 Compress
               </button>
             </div>
           </>
+        )}
+
+        {stage.kind === "ready" && sampleOpen && (
+          <SampleViewer
+            engine={engine.current!}
+            file={stage.file}
+            password={password}
+            profile={profile}
+            onProfileChange={setProfile}
+            onClose={() => setSampleOpen(false)}
+          />
+        )}
+
+        {stage.kind === "password" && (
+          <PasswordView
+            fileName={stage.file.name}
+            error={stage.error}
+            onUnlock={(pw) => void analyzeFile(stage.file, pw)}
+            onCancel={() => setStage({ kind: "home" })}
+          />
         )}
 
         {stage.kind === "processing" && (
@@ -250,7 +304,6 @@ export default function App() {
             pageRequests={stage.pageRequests}
             onAnotherProfile={() => setStage({ kind: "ready", file: stage.file, report: stage.report })}
             onNewFile={pickFile}
-            onDiagnostics={() => showDiagnostics(stage.report, stage.result)}
           />
         )}
 
@@ -298,6 +351,21 @@ export default function App() {
                 </button>
               )}
             </div>
+            {(stage.kind === "ready" || stage.kind === "done") && (
+              <>
+                <h2 className="section-title">Troubleshooting</h2>
+                <div className="actions compact-actions">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => (stage.kind === "done" ? showDiagnostics(stage.report, stage.result) : showDiagnostics(stage.report))}
+                  >
+                    Export diagnostics
+                  </button>
+                </div>
+                <p className="footnote">A structure-only report about the current PDF, for troubleshooting. No file name or content.</p>
+              </>
+            )}
             <h2 className="section-title">Privacy</h2>
             <div className="group">
               <div className="row"><span className="row-label">Processing</span><span className="row-value">On this device only</span></div>

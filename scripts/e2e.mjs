@@ -18,6 +18,14 @@ const small = join(work, "scan-color.pdf");
 const big = join(work, "scan-big.pdf");
 writeFileSync(small, await makeScanPdf({ mode: "color", encoding: "flate", links: true, outline: true, pages: 2 }));
 writeFileSync(big, await makeScanPdf({ mode: "color", encoding: "flate", pages: 6 }));
+const lockedPath = join(work, "locked.pdf");
+const LOCK_PW = "open sesame";
+{
+  const mupdf = await import("mupdf");
+  const d = mupdf.Document.openDocument(await makeScanPdf({ mode: "gray", encoding: "flate", pages: 1 }), "application/pdf").asPDF();
+  writeFileSync(lockedPath, d.saveToBuffer(`encrypt=aes-256,user-password=${LOCK_PW},owner-password=owner`).asUint8Array().slice());
+  d.destroy();
+}
 
 const server = await preview({ preview: { port: 4317, strictPort: true }, logLevel: "warn" });
 const url = "http://localhost:4317/";
@@ -140,7 +148,7 @@ try {
 
   // Diagnostics: preview dialog with a structure-only report (no file name).
   {
-    await page.locator("details.disclosure summary", { hasText: "More" }).click();
+    await openAppInfo();
     await page.getByRole("button", { name: "Export diagnostics" }).click();
     const pre = page.locator(".diag-pre");
     await pre.waitFor();
@@ -149,6 +157,67 @@ try {
     if (shots) await page.screenshot({ path: join(shots, "6-diagnostics.png") });
     check("diagnostics dialog shows structure-only report", text.includes("[images]") && text.includes("[last compression]") && !text.includes("scan-color"), `${text.split("\n").length} lines`);
     await page.getByRole("button", { name: "Close" }).click();
+  }
+
+  // Sample preview: one page compressed and shown next to the original, fully offline-capable.
+  {
+    await page.getByRole("button", { name: "Done" }).click();
+    await page.locator('input[type="file"]').setInputFiles(small);
+    await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
+    await networkQuiet();
+    recording = true;
+    requestsDuringJob.length = 0;
+    await page.getByRole("button", { name: "Preview a sample page" }).click();
+    const stats = page.locator(".sample-stats");
+    await stats.waitFor({ timeout: 60_000 });
+    recording = false; // sample computed: anything after this is not part of the job
+    const sampleNet = requestsDuringJob.filter((u) => !u.startsWith("blob:")); // blob: = in-memory images, not network
+    check("sample: no network requests while computing", sampleNet.length === 0, sampleNet.join(", "));
+    const imgsOk = await page.locator(".sample-scroll img").evaluateAll((els) => els.length === 2 && els.every((e) => e.complete && e.naturalWidth > 0));
+    check("sample: original and compressed page rendered side by side", imgsOk);
+    check("sample: measured size for this page", /Images on this page: .* → .*\(−\d/.test(await stats.innerText()), (await stats.innerText()).split("\n")[0]);
+    const before = (await stats.innerText()).split("\n")[0];
+    await page.locator(".chips").getByRole("radio", { name: "Compact", exact: true }).click();
+    await page.waitForFunction((b) => {
+      const el = document.querySelector(".sample-stats");
+      return el && !document.querySelector(".sample-loading") && el.textContent && !el.textContent.startsWith(b);
+    }, before.slice(0, 60), { timeout: 60_000 }).catch(() => {});
+    check("sample: switching profile re-renders", (await stats.innerText()).split("\n")[0] !== before, (await stats.innerText()).split("\n")[0]);
+    await page.getByRole("radio", { name: "2×" }).click();
+    const zoomed = await page.locator(".sample-scroll").first().evaluate((el) => el.scrollWidth > el.clientWidth * 1.5);
+    check("sample: zoom enlarges the page", zoomed);
+    if (shots) await page.screenshot({ path: join(shots, "8-sample.png") });
+    await page.locator(".sample-header").getByRole("button", { name: "Done" }).click();
+    check("sample: closing returns to settings, profile follows the sample", await page.getByRole("radio", { name: /Compact/ }).first().getAttribute("aria-checked") === "true");
+  }
+
+  // Password-protected PDF: ask, reject a wrong password, unlock, keep the password on the output.
+  {
+    await page.getByRole("button", { name: "Done" }).click();
+    await page.locator('input[type="file"]').setInputFiles(lockedPath);
+    await page.getByText("Password required").waitFor({ timeout: 30_000 });
+    check("password: prompt shown for a protected PDF", true);
+    await page.getByLabel("PDF password").fill("wrong one");
+    await page.getByRole("button", { name: "Unlock" }).click();
+    await page.getByText("That password isn't right").waitFor({ timeout: 30_000 });
+    check("password: wrong password rejected", true);
+    await page.getByLabel("PDF password").fill(LOCK_PW);
+    await page.getByRole("button", { name: "Unlock" }).click();
+    await page.getByRole("button", { name: "Compress" }).waitFor({ timeout: 60_000 });
+    check("password: unlocked, keep-password switch on by default", await page.locator("input.switch").isChecked());
+    await page.getByRole("radio", { name: /Balanced/ }).click();
+    await page.getByRole("button", { name: "Compress" }).click();
+    await page.locator(".hero-number").waitFor({ timeout: 120_000 });
+    check("password: result says password kept", (await page.locator(".hero-meta").innerText()).includes("password kept"));
+    const [dl2] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download" }).first().click()]);
+    const outLocked = join(work, "locked-out.pdf");
+    await dl2.saveAs(outLocked);
+    const mupdf = await import("mupdf");
+    const od = mupdf.Document.openDocument(readFileSync(outLocked), "application/pdf").asPDF();
+    const needs = od.needsPassword();
+    const opens = needs && od.authenticatePassword(LOCK_PW) > 0;
+    od.destroy();
+    check("password: downloaded copy needs the same password", needs && opens);
   }
 
   // Simulated new deploy: change sw.js on the server. The app must detect it on the next check
@@ -219,7 +288,8 @@ try {
   }
   check("no uncaught page errors", errors.length === 0, errors.join(" | "));
   // Whole session: only GETs of the app's own files. No uploads, no other origins.
-  const bad = allRequests.filter((r) => r.method !== "GET" || r.hasBody || !r.url.startsWith(url));
+  // blob: URLs are in-memory objects (rendered sample pages, downloads), not network traffic.
+  const bad = allRequests.filter((r) => !r.url.startsWith("blob:") && (r.method !== "GET" || r.hasBody || !r.url.startsWith(url)));
   check("entire session: only same-origin GETs, no request bodies", bad.length === 0, `${allRequests.length} requests; ${bad.map((b) => `${b.method} ${b.url}`).join(", ")}`);
 } catch (e) {
   check("e2e run completed", false, String(e));
