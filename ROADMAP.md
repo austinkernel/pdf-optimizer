@@ -22,10 +22,7 @@ It never sends documents anywhere and keeps no documents, same as the live app.
 
 ## Working on (in `next`)
 
-- [x] **Android support shown in the app**: device-neutral wording ("this device", not "this iPhone"). Install help in the browser: a one-tap **Install app** button where the browser offers it (Android Chrome, Edge, Samsung Internet), menu steps otherwise, and Share → Add to Home Screen steps on iPhone. Full flow tested on an Android (Pixel 7) profile in Chromium, the engine Chrome on Android uses. *Not yet tried on a real Android phone.*
-- [x] **Orange instead of blue** in the live app: accent, buttons and icon. Deep orange in light mode so white button text stays readable; bright orange with dark text in dark mode.
-- [x] **Preview restyled** in a plain, muted blue-gray: flat icon with PREVIEW band, striped monospace banner, slate buttons.
-- [x] **Updates moved into a collapsed "App info & updates" section**, like Privacy. No popup. A small blue "Update ready" badge next to the section title when a new version has downloaded. *Built and tested; waiting for you to try it in the preview app.*
+Nothing yet. New ideas start here.
 
 ## Planned
 
@@ -50,7 +47,8 @@ It never sends documents anywhere and keeps no documents, same as the live app.
 
 ## Done
 
-- **0.3.0**: reliable update checks, update popup (being replaced), Export diagnostics.
+- **0.4.0**: Android-ready wording and install help; orange theme; updates in a collapsed "App info & updates" section with an "Update ready" badge (no popup); preview app (blue-gray) and roadmap.
+- **0.3.0**: reliable update checks, update popup (since replaced), Export diagnostics.
 - **0.2.1**: Save to Files fix, mozjpeg 4:2:0 encoder, photo-sized page handling, fresh engine per job.
 - **0.2.0**: working offline PWA: analysis, four profiles, in-place compression, verification, Save/Share.
 - **0.1.0**: feasibility research.

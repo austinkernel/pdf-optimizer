@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.0: Android, orange theme, quieter updates, preview app
 ### Added
 - A preview app (orange icon, "PREVIEW" banner) served under `/preview/`,
   built from the `next` branch, so upcoming changes can be tried on the phone
@@ -23,7 +23,6 @@
   the section title (even while it is collapsed), and **Install update now**
   is inside. "Updating…" shows while a download is in progress. Update
   checks still run at launch, on return to the foreground and every 30 min.
-- Version 0.4.0 (in `next`).
 - The live app's service worker no longer answers requests under `/preview/`;
   otherwise it would serve the live app in place of the preview.
 - The web manifest is generated at build time (live and preview variants).
